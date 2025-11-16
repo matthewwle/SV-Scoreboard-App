@@ -1,0 +1,211 @@
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { Court, Match, ScoreState } from './types';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('ERROR: SUPABASE_URL and SUPABASE_KEY must be set in backend/.env file');
+  console.error('Current SUPABASE_URL:', supabaseUrl);
+  process.exit(1);
+}
+
+export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
+
+// Court operations
+export async function getCourt(id: number): Promise<Court | null> {
+  const { data, error } = await supabase
+    .from('courts')
+    .select('*')
+    .eq('id', id)
+    .single();
+  
+  if (error) {
+    console.error('Error fetching court:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function getAllCourts(): Promise<Court[]> {
+  const { data, error } = await supabase
+    .from('courts')
+    .select('*')
+    .order('id');
+  
+  if (error) {
+    console.error('Error fetching courts:', error);
+    return [];
+  }
+  return data || [];
+}
+
+// Match operations
+export async function getMatch(id: number): Promise<Match | null> {
+  const { data, error } = await supabase
+    .from('matches')
+    .select('*')
+    .eq('id', id)
+    .single();
+  
+  if (error) {
+    console.error('Error fetching match:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function getCurrentMatch(courtId: number): Promise<Match | null> {
+  const court = await getCourt(courtId);
+  if (!court || !court.current_match_id) return null;
+  
+  return getMatch(court.current_match_id);
+}
+
+export async function createMatch(match: Omit<Match, 'id' | 'created_at'>): Promise<Match | null> {
+  const { data, error } = await supabase
+    .from('matches')
+    .insert(match)
+    .select()
+    .single();
+  
+  if (error) {
+    console.error('Error creating match:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function updateMatch(id: number, updates: Partial<Match>): Promise<Match | null> {
+  const { data, error } = await supabase
+    .from('matches')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) {
+    console.error('Error updating match:', error);
+    return null;
+  }
+  return data;
+}
+
+// Score state operations
+export async function getScoreState(matchId: number): Promise<ScoreState | null> {
+  const { data, error } = await supabase
+    .from('score_states')
+    .select('*')
+    .eq('match_id', matchId)
+    .single();
+  
+  if (error) {
+    console.error('Error fetching score state:', error);
+    return null;
+  }
+  return data;
+}
+
+// Initialize a fresh score state for a new match
+export async function initializeScoreState(matchId: number): Promise<ScoreState | null> {
+  const scoreState: Omit<ScoreState, 'id' | 'updated_at'> = {
+    match_id: matchId,
+    set_number: 1,
+    team_a_score: 0,
+    team_b_score: 0
+  };
+  return upsertScoreState(scoreState);
+}
+
+export async function upsertScoreState(scoreState: Omit<ScoreState, 'id' | 'updated_at'>): Promise<ScoreState | null> {
+  // Remove set_history from the object before upserting (optional column that may not exist)
+  const { set_history, ...scoreStateWithoutHistory } = scoreState as any;
+  
+  const { data, error } = await supabase
+    .from('score_states')
+    .upsert(scoreStateWithoutHistory, { onConflict: 'match_id' })
+    .select()
+    .single();
+  
+  if (error) {
+    console.error('Error upserting score state:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function updateCourtMatch(courtId: number, matchId: number | null): Promise<Court | null> {
+  const { data, error } = await supabase
+    .from('courts')
+    .update({ current_match_id: matchId })
+    .eq('id', courtId)
+    .select()
+    .single();
+  
+  if (error) {
+    console.error('Error updating court match:', error);
+    return null;
+  }
+  return data;
+}
+
+// Delete all matches for a court
+export async function deleteMatchesForCourt(courtId: number): Promise<void> {
+  const { error } = await supabase
+    .from('matches')
+    .delete()
+    .eq('court_id', courtId);
+  
+  if (error) {
+    console.error('Error deleting matches for court:', error);
+  }
+}
+
+// Get upcoming matches for a court (not completed, ordered by id descending to get newest first)
+export async function getUpcomingMatches(courtId: number, limit: number = 5): Promise<Match[]> {
+  const { data, error} = await supabase
+    .from('matches')
+    .select('*')
+    .eq('court_id', courtId)
+    .eq('is_completed', false)
+    .order('id', { ascending: false })  // Descending to get newest matches first
+    .limit(limit);
+  
+  if (error) {
+    console.error('Error fetching upcoming matches:', error);
+    return [];
+  }
+  
+  // Reverse to show in chronological order (first match first)
+  return data ? data.reverse() : [];
+}
+
+// Get the next available match for a court (first uncompleted match)
+export async function getNextMatch(courtId: number): Promise<Match | null> {
+  const matches = await getUpcomingMatches(courtId, 1);
+  return matches.length > 0 ? matches[0] : null;
+}
+
+// Initialize courts (run on startup)
+export async function initializeCourts(count: number = 120): Promise<void> {
+  const courts = Array.from({ length: count }, (_, i) => ({
+    id: i + 1,
+    name: `Court ${i + 1}`,
+    current_match_id: null
+  }));
+
+  const { error } = await supabase
+    .from('courts')
+    .upsert(courts, { onConflict: 'id' });
+
+  if (error) {
+    console.error('Error initializing courts:', error);
+  } else {
+    console.log(`Initialized ${count} courts`);
+  }
+}
+

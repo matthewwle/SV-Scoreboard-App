@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=development
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - FRONTEND_URL=http://localhost:5173
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - scoreboard-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - scoreboard-network
+
+volumes:
+  redis-data:
+
+networks:
+  scoreboard-network:
+    driver: bridge
+
