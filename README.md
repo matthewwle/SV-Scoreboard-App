@@ -1,11 +1,11 @@
 # Volleyball Scoreboard System
 
-A real-time volleyball scoreboard system built for 120+ courts with live streaming overlay support. Similar to keepthescore.com, optimized for Larix Broadcaster integration.
+A real-time volleyball scoreboard system built for 70 courts with live streaming overlay support. Similar to keepthescore.com, optimized for Larix Broadcaster integration.
 
 ## Features
 
 - ✅ **Real-time scoring** with WebSocket updates (<200ms latency)
-- ✅ **120+ courts** support with isolated state
+- ✅ **70 courts** support with isolated state
 - ✅ **Automatic volleyball set logic** (first to 25, win by 2)
 - ✅ **Transparent overlay** for streaming (Larix compatible)
 - ✅ **Tablet scorekeeper UI** with persistent court selection
@@ -109,7 +109,7 @@ VITE_WS_URL=http://localhost:3001
 ### Scorekeeper (Tablet)
 
 1. Open `/control` on your tablet
-2. Select your court number (1-120)
+2. Select your court number (1-70)
 3. Court selection is saved in localStorage (persists all day)
 4. Tap the logo 5 times to reset court selection
 5. Use +/− buttons to adjust scores
@@ -247,7 +247,7 @@ npm run build
 
 ## Scaling
 
-The system is designed to handle 120+ courts simultaneously:
+The system is designed to handle 70 courts simultaneously:
 
 - **Expected connections:** ~360 (2 control + 1 overlay per court)
 - **Redis pub/sub:** Enables horizontal scaling of backend instances

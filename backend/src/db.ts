@@ -191,7 +191,7 @@ export async function getNextMatch(courtId: number): Promise<Match | null> {
 }
 
 // Initialize courts (run on startup)
-export async function initializeCourts(count: number = 120): Promise<void> {
+export async function initializeCourts(count: number = 70): Promise<void> {
   const courts = Array.from({ length: count }, (_, i) => ({
     id: i + 1,
     name: `Court ${i + 1}`,

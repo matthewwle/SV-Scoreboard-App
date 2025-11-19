@@ -90,7 +90,7 @@ async function startServer() {
     await connectRedis();
 
     // Initialize courts in database
-    await initializeCourts(120);
+    await initializeCourts(70);
 
     // Start HTTP server
     httpServer.listen(PORT, () => {

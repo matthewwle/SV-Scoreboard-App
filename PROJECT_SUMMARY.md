@@ -60,7 +60,7 @@ keepthescore clone/
 - ✅ WebSocket-based live updates (<200ms latency)
 - ✅ Socket.IO with automatic reconnection
 - ✅ Room-based isolation per court (no cross-talk)
-- ✅ 120+ courts support
+- ✅ 70 courts support
 
 ### 2. Volleyball Set Logic
 - ✅ First to 25 points wins set
@@ -71,7 +71,7 @@ keepthescore clone/
 - ✅ Best of 3 match format (first to 2 sets)
 
 ### 3. Control UI (Tablet Interface)
-- ✅ Court selection on first load (1-120)
+- ✅ Court selection on first load (1-70)
 - ✅ Court selection persists in localStorage
 - ✅ Hidden reset: tap logo 5 times
 - ✅ Large +/− buttons for score adjustment
@@ -113,7 +113,7 @@ keepthescore clone/
 - ✅ Foreign key relationships
 - ✅ Indexes for performance
 - ✅ Auto-timestamp triggers
-- ✅ 120 courts pre-initialized
+- ✅ 70 courts pre-initialized
 
 ### 8. Redis Integration
 - ✅ Score state caching
@@ -151,7 +151,7 @@ keepthescore clone/
 | Auto-load team names | ✅ | From spreadsheet import |
 | Persistent court selection | ✅ | localStorage |
 | Hidden reset | ✅ | 5 taps on logo |
-| 120+ courts | ✅ | Scalable to any number |
+| 70 courts | ✅ | Scalable to any number |
 | <200ms updates | ✅ | WebSocket optimization |
 | Larix compatible | ✅ | Transparent overlay |
 | Spreadsheet import | ✅ | CSV/XLSX support |
@@ -361,7 +361,7 @@ All features from the PRD have been implemented and are ready for testing and de
 - ✅ Control UI for scorekeepers
 - ✅ Overlay UI for streaming
 - ✅ Admin UI for schedule upload
-- ✅ 120 court support
+- ✅ 70 court support
 - ✅ Redis caching and pub/sub
 - ✅ Database schema and operations
 - ✅ Docker containerization

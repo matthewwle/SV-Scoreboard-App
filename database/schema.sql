@@ -61,12 +61,12 @@ CREATE TRIGGER update_score_states_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- Initialize 120 courts
+-- Initialize 70 courts
 INSERT INTO courts (id, name)
 SELECT 
   generate_series AS id,
   'Court ' || generate_series AS name
-FROM generate_series(1, 120)
+FROM generate_series(1, 70)
 ON CONFLICT (id) DO NOTHING;
 
 -- Match Logs Table (for tracking start/end times)

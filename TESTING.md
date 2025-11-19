@@ -33,7 +33,7 @@ Comprehensive testing instructions for the Volleyball Scoreboard System.
 #### 3. Control UI - Court Selection
 - [ ] Navigate to `/control`
 - [ ] "Select Court" modal appears
-- [ ] Grid of 120 courts displayed
+- [ ] Grid of 70 courts displayed
 - [ ] Click "Court 1"
 - [ ] Court selection saved (check localStorage)
 - [ ] Team names loaded from uploaded schedule
@@ -191,7 +191,7 @@ Create `ws-load-test.js`:
 ```javascript
 const io = require('socket.io-client');
 
-const COURTS = 120;
+const COURTS = 70;
 const CONNECTIONS_PER_COURT = 3;
 
 console.log(`Creating ${COURTS * CONNECTIONS_PER_COURT} connections...`);

@@ -263,7 +263,7 @@ server.ts (Entry Point)
 
 **courts**
 - Primary key: `id` (integer)
-- Stores 120 courts (pre-populated)
+- Stores 70 courts (pre-populated)
 - References current active match
 
 **matches**
@@ -352,7 +352,7 @@ Max capacity: ~1000 concurrent connections
             │                │                │
       ┌─────▼─────┐    ┌────▼─────┐    ┌────▼─────┐
       │Instance 1 │    │Instance 2│    │Instance 3│
-      │ (120 WS)  │    │ (120 WS) │    │ (120 WS) │
+      │ (70 WS)   │    │ (70 WS)  │    │ (70 WS)  │
       └─────┬─────┘    └────┬─────┘    └────┬─────┘
             │               │               │
             └───────────────┼───────────────┘
@@ -404,7 +404,7 @@ Auto-scale based on CPU/Memory
 
 ### Scaling Limits
 
-- **Courts per instance**: 120 (design limit)
+- **Courts per instance**: 70 (design limit)
 - **Connections per instance**: ~360 (2-3 per court)
 - **Horizontal scaling**: Unlimited (via Redis pub/sub)
 
@@ -577,5 +577,5 @@ This architecture provides:
 - ✅ Clean separation of concerns
 - ✅ Easy to deploy and maintain
 
-The system is production-ready and can handle 120+ courts with thousands of concurrent users.
+The system is production-ready and can handle 70 courts with thousands of concurrent users.
 
