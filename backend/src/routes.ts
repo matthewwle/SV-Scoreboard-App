@@ -11,7 +11,10 @@ import {
   getUpcomingMatches,
   getNextMatch,
   initializeScoreState,
-  updateMatch
+  updateMatch,
+  createMatchLog,
+  updateMatchLogEndTime,
+  getAllMatchLogs
 } from './db';
 import {
   incrementScore,
@@ -106,6 +109,9 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
     
     // Update the court to use the next match
     await updateCourtMatch(courtId, nextMatch.id);
+    
+    // 🆕 LOG MATCH START - Create a match log when starting to score the next match
+    await createMatchLog(courtId, nextMatch.id, nextMatch.team_a, nextMatch.team_b);
     
     // Get the updated match and broadcast the initial state
     const updatedMatch = await getMatch(nextMatch.id);
@@ -297,6 +303,17 @@ router.get('/score/current/:courtId', async (req, res) => {
     res.json(payload);
   } catch (error) {
     console.error('Error fetching current score:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Match Logs API
+router.get('/logs/matches', async (req, res) => {
+  try {
+    const logs = await getAllMatchLogs();
+    res.json(logs);
+  } catch (error) {
+    console.error('Error fetching match logs:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

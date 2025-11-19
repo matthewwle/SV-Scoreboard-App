@@ -28,6 +28,17 @@ export interface ScoreState {
   updated_at?: string;
 }
 
+export interface MatchLog {
+  id?: number;
+  court_id: number;
+  match_id: number;
+  team_a: string;
+  team_b: string;
+  start_time: string | null;
+  end_time: string | null;
+  created_at?: string;
+}
+
 // WebSocket Payloads
 export interface SetScore {
   teamAScore: number;

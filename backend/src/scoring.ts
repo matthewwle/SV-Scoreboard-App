@@ -1,5 +1,5 @@
 import { Match, ScoreState, ScoreUpdatePayload, SetScore } from './types';
-import { getMatch, updateMatch, getScoreState, upsertScoreState, getCurrentMatch } from './db';
+import { getMatch, updateMatch, getScoreState, upsertScoreState, getCurrentMatch, updateMatchLogEndTime } from './db';
 import { cacheScoreState, publishScoreUpdate } from './redis';
 import { Server as SocketIOServer } from 'socket.io';
 
@@ -144,6 +144,9 @@ export async function confirmSetWin(courtId: number): Promise<ScoreUpdatePayload
   // Check if match is complete (best of 3, first to 2)
   if (match.sets_a >= 2 || match.sets_b >= 2) {
     match.is_completed = true;
+    
+    // 🆕 LOG MATCH END - Update the match log with end time
+    await updateMatchLogEndTime(match.id);
   }
   
   await updateMatch(match.id, {

@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Court, Match, ScoreState } from './types';
+import { Court, Match, ScoreState, MatchLog } from './types';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -207,5 +207,63 @@ export async function initializeCourts(count: number = 120): Promise<void> {
   } else {
     console.log(`Initialized ${count} courts`);
   }
+}
+
+// Match Log operations
+export async function createMatchLog(courtId: number, matchId: number, teamA: string, teamB: string): Promise<MatchLog | null> {
+  const matchLog: Omit<MatchLog, 'id' | 'created_at'> = {
+    court_id: courtId,
+    match_id: matchId,
+    team_a: teamA,
+    team_b: teamB,
+    start_time: new Date().toISOString(),
+    end_time: null
+  };
+  
+  const { data, error } = await supabase
+    .from('match_logs')
+    .insert(matchLog)
+    .select()
+    .single();
+  
+  if (error) {
+    console.error('Error creating match log:', error);
+    return null;
+  }
+  
+  console.log(`✅ Match log created for Court ${courtId}: ${teamA} vs ${teamB}`);
+  return data;
+}
+
+export async function updateMatchLogEndTime(matchId: number): Promise<MatchLog | null> {
+  const { data, error } = await supabase
+    .from('match_logs')
+    .update({ end_time: new Date().toISOString() })
+    .eq('match_id', matchId)
+    .is('end_time', null)  // Only update logs that haven't ended yet
+    .select()
+    .single();
+  
+  if (error) {
+    console.error('Error updating match log end time:', error);
+    return null;
+  }
+  
+  console.log(`✅ Match log ended for match ${matchId}`);
+  return data;
+}
+
+export async function getAllMatchLogs(): Promise<MatchLog[]> {
+  const { data, error } = await supabase
+    .from('match_logs')
+    .select('*')
+    .order('start_time', { ascending: true });
+  
+  if (error) {
+    console.error('Error fetching match logs:', error);
+    return [];
+  }
+  
+  return data || [];
 }
 

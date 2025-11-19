@@ -69,6 +69,24 @@ SELECT
 FROM generate_series(1, 120)
 ON CONFLICT (id) DO NOTHING;
 
+-- Match Logs Table (for tracking start/end times)
+CREATE TABLE IF NOT EXISTS match_logs (
+  id SERIAL PRIMARY KEY,
+  court_id INTEGER NOT NULL,
+  match_id INTEGER NOT NULL,
+  team_a VARCHAR(100) NOT NULL,
+  team_b VARCHAR(100) NOT NULL,
+  start_time TIMESTAMP WITH TIME ZONE,
+  end_time TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (court_id) REFERENCES courts(id) ON DELETE CASCADE,
+  FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
+);
+
+-- Index for performance
+CREATE INDEX idx_match_logs_court_id ON match_logs(court_id);
+CREATE INDEX idx_match_logs_match_id ON match_logs(match_id);
+
 -- Sample data (optional - for testing)
 -- INSERT INTO matches (court_id, team_a, team_b, start_time) VALUES
 --   (1, 'Spikers United', 'Net Warriors', '09:00'),

@@ -1,11 +1,26 @@
 import { useState } from 'react';
 import { API_URL } from '../config';
 
+interface MatchLog {
+  id: number;
+  court_id: number;
+  match_id: number;
+  team_a: string;
+  team_b: string;
+  start_time: string | null;
+  end_time: string | null;
+  created_at: string;
+}
+
 function AdminUI() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  
+  const [matchLogs, setMatchLogs] = useState<MatchLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logsError, setLogsError] = useState<string | null>(null);
 
   async function handleUpload() {
     if (!file) {
@@ -37,6 +52,56 @@ function AdminUI() {
     } finally {
       setUploading(false);
     }
+  }
+
+  async function loadMatchLogs() {
+    setLoadingLogs(true);
+    setLogsError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/logs/matches`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch match logs');
+      }
+
+      const data = await response.json();
+      setMatchLogs(data);
+    } catch (err) {
+      setLogsError(err instanceof Error ? err.message : 'Failed to fetch logs');
+    } finally {
+      setLoadingLogs(false);
+    }
+  }
+
+  function exportLogsToCSV() {
+    if (matchLogs.length === 0) {
+      alert('No logs to export');
+      return;
+    }
+
+    // Create CSV content
+    const headers = ['Court', 'Match ID', 'Team A', 'Team B', 'Start Time', 'End Time'];
+    const rows = matchLogs.map(log => [
+      log.court_id,
+      log.match_id,
+      log.team_a,
+      log.team_b,
+      log.start_time ? new Date(log.start_time).toLocaleString() : 'N/A',
+      log.end_time ? new Date(log.end_time).toLocaleString() : 'In Progress'
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    // Create download link
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `match-logs-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
   }
 
   return (
@@ -126,6 +191,80 @@ function AdminUI() {
 2,09:00,Block Party,Set Point,M002
 3,09:15,Court Jesters,Dig Deep,M003`}
           </pre>
+        </div>
+
+        {/* Match Logs Section */}
+        <div className="rounded-xl shadow-lg p-8 mt-6" style={{ backgroundColor: '#1a1a3e' }}>
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-xl font-bold" style={{ color: '#DDFD51' }}>Match Logs</h2>
+              <p className="text-sm mt-1" style={{ color: '#9a9ab8' }}>
+                View and export match timing data
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={loadMatchLogs}
+                disabled={loadingLogs}
+                className="font-bold py-3 px-6 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-50"
+                style={{ backgroundColor: '#DDFD51', color: '#000429' }}
+              >
+                {loadingLogs ? 'Loading...' : '🔄 Load Logs'}
+              </button>
+              {matchLogs.length > 0 && (
+                <button
+                  onClick={exportLogsToCSV}
+                  className="font-bold py-3 px-6 rounded-lg transition-opacity hover:opacity-80"
+                  style={{ backgroundColor: '#DDFD51', color: '#000429' }}
+                >
+                  📥 Export CSV
+                </button>
+              )}
+            </div>
+          </div>
+
+          {logsError && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4">
+              <strong>Error:</strong> {logsError}
+            </div>
+          )}
+
+          {matchLogs.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #DDFD51' }}>
+                    <th className="py-3 px-4 font-bold" style={{ color: '#DDFD51' }}>Court</th>
+                    <th className="py-3 px-4 font-bold" style={{ color: '#DDFD51' }}>Match ID</th>
+                    <th className="py-3 px-4 font-bold" style={{ color: '#DDFD51' }}>Team A</th>
+                    <th className="py-3 px-4 font-bold" style={{ color: '#DDFD51' }}>Team B</th>
+                    <th className="py-3 px-4 font-bold" style={{ color: '#DDFD51' }}>Start Time</th>
+                    <th className="py-3 px-4 font-bold" style={{ color: '#DDFD51' }}>End Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {matchLogs.map((log) => (
+                    <tr key={log.id} style={{ borderBottom: '1px solid #2a2a4e' }}>
+                      <td className="py-3 px-4" style={{ color: '#ffffff' }}>{log.court_id}</td>
+                      <td className="py-3 px-4" style={{ color: '#ffffff' }}>{log.match_id}</td>
+                      <td className="py-3 px-4" style={{ color: '#ffffff' }}>{log.team_a}</td>
+                      <td className="py-3 px-4" style={{ color: '#ffffff' }}>{log.team_b}</td>
+                      <td className="py-3 px-4" style={{ color: '#ffffff' }}>
+                        {log.start_time ? new Date(log.start_time).toLocaleString() : 'N/A'}
+                      </td>
+                      <td className="py-3 px-4" style={{ color: log.end_time ? '#DDFD51' : '#ff9999' }}>
+                        {log.end_time ? new Date(log.end_time).toLocaleString() : '⏱️ In Progress'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-8" style={{ color: '#9a9ab8' }}>
+              {loadingLogs ? 'Loading logs...' : 'No logs loaded. Click "Load Logs" to view match timing data.'}
+            </div>
+          )}
         </div>
       </div>
     </div>
