@@ -249,7 +249,9 @@ function ControlUI() {
 
   // Pause screen - shown when match is complete or before first match
   if (showPauseScreen) {
-    const nextTwoMatches = upcomingMatches.slice(0, 2);
+    // Filter out the current match from upcoming matches to show only truly upcoming ones
+    const futureMatches = upcomingMatches.filter(match => match.id !== currentMatch?.id);
+    const nextTwoMatches = futureMatches.slice(0, 2);
     const isFirstMatch = !currentMatch; // No current match means this is the first one
     
     return (
