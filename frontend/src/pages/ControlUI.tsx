@@ -40,12 +40,19 @@ function ControlUI() {
     }
   }, []);
 
-  // Show pause screen when match is complete
+  // Show pause screen when match is complete OR when there's no current match but there are upcoming matches
   useEffect(() => {
     if (isMatchComplete && !showPauseScreen) {
       setShowPauseScreen(true);
     }
   }, [isMatchComplete]);
+
+  // Show pause screen if no current match but there are upcoming matches (for first match)
+  useEffect(() => {
+    if (!currentMatch && upcomingMatches.length > 0 && selectedCourt && !showPauseScreen) {
+      setShowPauseScreen(true);
+    }
+  }, [currentMatch, upcomingMatches, selectedCourt]);
 
   // Fetch all courts
   useEffect(() => {
@@ -240,25 +247,28 @@ function ControlUI() {
     );
   }
 
-  // Pause screen - shown when match is complete
+  // Pause screen - shown when match is complete or before first match
   if (showPauseScreen) {
     const nextTwoMatches = upcomingMatches.slice(0, 2);
+    const isFirstMatch = !currentMatch; // No current match means this is the first one
     
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: '#000429' }}>
         <div className="rounded-2xl shadow-2xl p-8 max-w-2xl w-full" style={{ backgroundColor: '#1a1a3e' }}>
           <h1 className="text-4xl font-bold text-center mb-4" style={{ color: '#DDFD51' }}>
-            Match Complete! 🎉
+            {isFirstMatch ? 'Ready to Start! 🏐' : 'Match Complete! 🎉'}
           </h1>
           
-          <div className="text-center mb-8">
-            <div className="text-2xl font-semibold mb-2" style={{ color: 'white' }}>
-              {scoreState?.teamA} vs {scoreState?.teamB}
+          {!isFirstMatch && scoreState && (
+            <div className="text-center mb-8">
+              <div className="text-2xl font-semibold mb-2" style={{ color: 'white' }}>
+                {scoreState.teamA} vs {scoreState.teamB}
+              </div>
+              <div className="text-xl" style={{ color: '#9a9ab8' }}>
+                Final Score: {scoreState.setsA} - {scoreState.setsB}
+              </div>
             </div>
-            <div className="text-xl" style={{ color: '#9a9ab8' }}>
-              Final Score: {scoreState?.setsA} - {scoreState?.setsB}
-            </div>
-          </div>
+          )}
 
           <div className="mb-8">
             <h2 className="text-2xl font-bold mb-4 text-center" style={{ color: '#DDFD51' }}>

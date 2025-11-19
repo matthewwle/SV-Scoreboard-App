@@ -346,11 +346,8 @@ router.post('/admin/uploadSchedule', upload.single('file'), async (req, res) => 
       if (match) {
         createdMatches.push(match);
         
-        // Assign to court if it's the first match for that court
-        const court = await getCourt(row.Court);
-        if (court && !court.current_match_id) {
-          await updateCourtMatch(row.Court, match.id);
-        }
+        // DON'T auto-assign matches - require "Start Scoring Next Match" button
+        // This ensures all matches (including the first one) get logged properly
       }
     }
     
