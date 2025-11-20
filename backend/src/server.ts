@@ -15,8 +15,33 @@ const httpServer = createServer(app);
 
 // Configure CORS
 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+// Allow localhost + Vercel deployments + custom domains
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  frontendUrl,
+  /https:\/\/.*\.vercel\.app$/,  // All Vercel deployments
+];
+
 app.use(cors({
-  origin: [frontendUrl, 'http://localhost:5173', 'http://localhost:5174'],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin matches allowed patterns
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') return allowed === origin;
+      if (allowed instanceof RegExp) return allowed.test(origin);
+      return false;
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 
@@ -25,7 +50,21 @@ app.use(express.json());
 // Socket.IO setup
 const io = new Server(httpServer, {
   cors: {
-    origin: [frontendUrl, 'http://localhost:5173', 'http://localhost:5174'],
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      
+      const isAllowed = allowedOrigins.some(allowed => {
+        if (typeof allowed === 'string') return allowed === origin;
+        if (allowed instanceof RegExp) return allowed.test(origin);
+        return false;
+      });
+      
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true
   }
 });

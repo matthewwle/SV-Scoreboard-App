@@ -2,6 +2,12 @@
 
 A real-time volleyball scoreboard system built for 70 courts with live streaming overlay support. Similar to keepthescore.com, optimized for Larix Broadcaster integration.
 
+## 🚀 Quick Deploy
+
+**Ready to deploy?** See [DEPLOY_CHECKLIST.md](./DEPLOY_CHECKLIST.md) for a 10-minute deployment guide using Railway + Vercel.
+
+For detailed instructions, see [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md).
+
 ## Features
 
 - ✅ **Real-time scoring** with WebSocket updates (<200ms latency)
@@ -213,7 +219,18 @@ Court,StartTime,TeamA,TeamB,MatchID
 
 ## Deployment
 
-### Backend (AWS ECS/Fargate)
+### 🚀 Recommended: Railway + Vercel (10 minutes)
+
+The easiest way to deploy is using Railway for the backend and Vercel for the frontend, both with GitHub integration for auto-deploys.
+
+**See [DEPLOY_CHECKLIST.md](./DEPLOY_CHECKLIST.md)** for a quick step-by-step guide.
+
+**See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** for detailed instructions and troubleshooting.
+
+### Alternative Deployment Options
+
+<details>
+<summary>Docker + AWS ECS/Fargate</summary>
 
 1. Build Docker image:
    ```bash
@@ -224,26 +241,16 @@ Court,StartTime,TeamA,TeamB,MatchID
 2. Push to ECR and deploy to ECS
 3. Configure ALB for WebSocket support
 4. Set environment variables in ECS task definition
+</details>
 
-### Frontend (Vercel/Netlify)
+<details>
+<summary>Other Platforms</summary>
 
-```bash
-cd frontend
-npm run build
-# Deploy dist/ folder
-```
-
-### Database (Supabase)
-
-1. Create project in Supabase
-2. Run schema.sql in SQL Editor
-3. Enable RLS policies if needed
-
-### Redis (AWS ElastiCache)
-
-1. Create Redis cluster
-2. Update REDIS_HOST in backend .env
-3. Ensure security groups allow backend access
+- **Backend:** Render, Heroku, DigitalOcean App Platform
+- **Frontend:** Netlify, Cloudflare Pages, AWS Amplify
+- **Database:** Already on Supabase (cloud-hosted)
+- **Redis:** Optional (AWS ElastiCache, Redis Cloud, Upstash)
+</details>
 
 ## Scaling
 
