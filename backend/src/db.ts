@@ -153,6 +153,25 @@ export async function updateCourtMatch(courtId: number, matchId: number | null):
   return data;
 }
 
+// Update court's Larix device ID
+export async function updateCourtLarixDeviceId(
+  courtId: number, 
+  deviceId: string | null
+): Promise<Court | null> {
+  const { data, error } = await supabase
+    .from('courts')
+    .update({ larix_device_id: deviceId })
+    .eq('id', courtId)
+    .select()
+    .single();
+  
+  if (error) {
+    console.error('Error updating court Larix device ID:', error);
+    return null;
+  }
+  return data;
+}
+
 // Delete all matches for a court
 export async function deleteMatchesForCourt(courtId: number): Promise<void> {
   const { error } = await supabase

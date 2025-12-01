@@ -114,10 +114,15 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
     await createMatchLog(courtId, nextMatch.id, nextMatch.team_a, nextMatch.team_b);
     
     // 🎥 START LARIX RECORDING - Trigger Larix to start recording
-    const { startRecording } = await import('./larixClient');
-    const larixStartResult = await startRecording(courtId, nextMatch.id);
-    if (!larixStartResult.success) {
-      console.warn(`⚠️  Larix recording start failed for Court ${courtId}: ${larixStartResult.message}`);
+    const court = await getCourt(courtId);
+    if (court?.larix_device_id) {
+      const { startRecording } = await import('./larixClient');
+      const larixStartResult = await startRecording(courtId, nextMatch.id, court.larix_device_id);
+      if (!larixStartResult.success) {
+        console.warn(`⚠️  Larix recording start failed for Court ${courtId}: ${larixStartResult.message}`);
+      }
+    } else {
+      console.log(`ℹ️  [Court ${courtId}] No Larix device configured - skipping recording start`);
     }
     
     // Get the updated match and broadcast the initial state
@@ -392,6 +397,51 @@ router.get('/admin/testLarix', async (req, res) => {
       success: false, 
       message: 'Error testing Larix connection' 
     });
+  }
+});
+
+// Set Larix device ID for a court
+router.post('/admin/court/:id/larixDevice', async (req, res) => {
+  try {
+    const courtId = parseInt(req.params.id);
+    const { deviceId } = req.body;
+    
+    if (!deviceId || typeof deviceId !== 'string') {
+      return res.status(400).json({ error: 'deviceId (string) is required' });
+    }
+    
+    const court = await updateCourtLarixDeviceId(courtId, deviceId);
+    
+    if (!court) {
+      return res.status(404).json({ error: 'Court not found' });
+    }
+    
+    res.json({
+      success: true,
+      message: `Larix device ID "${deviceId}" assigned to Court ${courtId}`,
+      court
+    });
+  } catch (error) {
+    console.error('Error setting Larix device ID:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all courts with their Larix device IDs
+router.get('/admin/courts/larixDevices', async (req, res) => {
+  try {
+    const courts = await getAllCourts();
+    const courtsWithDevices = courts.map(court => ({
+      courtId: court.id,
+      courtName: court.name,
+      larixDeviceId: court.larix_device_id || null,
+      hasCurrentMatch: !!court.current_match_id
+    }));
+    
+    res.json(courtsWithDevices);
+  } catch (error) {
+    console.error('Error fetching courts with devices:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

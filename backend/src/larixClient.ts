@@ -20,22 +20,35 @@ function delay(ms: number): Promise<void> {
 /**
  * Start recording on Larix via LarixTuner API
  * Retries up to MAX_RETRIES times with exponential backoff
+ * @param courtId - Court ID for logging purposes
+ * @param matchId - Match ID for logging purposes
+ * @param deviceId - Unique identifier for the Larix device (e.g., "device_1", "court5", or MAC address)
  */
-export async function startRecording(courtId: number, matchId: number): Promise<LarixResponse> {
+export async function startRecording(
+  courtId: number, 
+  matchId: number,
+  deviceId: string | null | undefined
+): Promise<LarixResponse> {
   if (!LARIX_API_URL || !LARIX_API_TOKEN) {
     console.warn('⚠️  Larix API not configured (LARIX_API_URL or LARIX_API_TOKEN missing)');
     return { success: false, message: 'Larix API not configured' };
+  }
+
+  if (!deviceId) {
+    console.warn(`⚠️  [Court ${courtId}] No Larix device ID configured for this court`);
+    return { success: false, message: 'No device ID configured for this court' };
   }
 
   let lastError: any = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log(`📹 [Court ${courtId}] Starting Larix recording (attempt ${attempt}/${MAX_RETRIES})...`);
+      console.log(`📹 [Court ${courtId}] Starting Larix recording for device "${deviceId}" (attempt ${attempt}/${MAX_RETRIES})...`);
       
       const response = await axios.post(
         `${LARIX_API_URL}/api/v1/recorder/start`,
         {
+          device_id: deviceId,
           court_id: courtId,
           match_id: matchId,
           timestamp: new Date().toISOString()
@@ -76,22 +89,35 @@ export async function startRecording(courtId: number, matchId: number): Promise<
 /**
  * Stop recording on Larix via LarixTuner API
  * Retries up to MAX_RETRIES times with exponential backoff
+ * @param courtId - Court ID for logging purposes
+ * @param matchId - Match ID for logging purposes
+ * @param deviceId - Unique identifier for the Larix device
  */
-export async function stopRecording(courtId: number, matchId: number): Promise<LarixResponse> {
+export async function stopRecording(
+  courtId: number, 
+  matchId: number,
+  deviceId: string | null | undefined
+): Promise<LarixResponse> {
   if (!LARIX_API_URL || !LARIX_API_TOKEN) {
     console.warn('⚠️  Larix API not configured (LARIX_API_URL or LARIX_API_TOKEN missing)');
     return { success: false, message: 'Larix API not configured' };
+  }
+
+  if (!deviceId) {
+    console.warn(`⚠️  [Court ${courtId}] No Larix device ID configured for this court`);
+    return { success: false, message: 'No device ID configured for this court' };
   }
 
   let lastError: any = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log(`🛑 [Court ${courtId}] Stopping Larix recording (attempt ${attempt}/${MAX_RETRIES})...`);
+      console.log(`🛑 [Court ${courtId}] Stopping Larix recording for device "${deviceId}" (attempt ${attempt}/${MAX_RETRIES})...`);
       
       const response = await axios.post(
         `${LARIX_API_URL}/api/v1/recorder/stop`,
         {
+          device_id: deviceId,
           court_id: courtId,
           match_id: matchId,
           timestamp: new Date().toISOString()

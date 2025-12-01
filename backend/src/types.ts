@@ -3,6 +3,7 @@ export interface Court {
   id: number;
   name: string;
   current_match_id: number | null;
+  larix_device_id?: string | null;
   created_at?: string;
 }
 
