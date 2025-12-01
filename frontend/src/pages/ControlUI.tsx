@@ -12,8 +12,17 @@ function ControlUI() {
   const [showPauseScreen, setShowPauseScreen] = useState(false);
   const [upcomingMatches, setUpcomingMatches] = useState<Match[]>([]);
   const [showSetWinModal, setShowSetWinModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<'success' | 'error' | 'warning'>('success');
 
   const { scoreState, isConnected } = useSocket(selectedCourt);
+
+  // Toast notification helper
+  function showToast(message: string, type: 'success' | 'error' | 'warning' = 'success') {
+    setToastMessage(message);
+    setToastType(type);
+    setTimeout(() => setToastMessage(null), 4000); // Auto-hide after 4 seconds
+  }
 
   // Check if current match is complete
   const isMatchComplete = currentMatch?.is_completed || 
@@ -107,6 +116,13 @@ function ControlUI() {
         setShowPauseScreen(false);
         loadUpcomingMatches(selectedCourt);
         
+        // Show toast notification based on Larix recording status
+        if (nextMatch.larixRecordingStarted) {
+          showToast('📹 Recording started', 'success');
+        } else if (nextMatch.larixMessage) {
+          showToast(`⚠️ Recording not started: ${nextMatch.larixMessage}`, 'warning');
+        }
+        
         // Force reload the current match to get fresh data
         setTimeout(() => {
           loadCurrentMatch(selectedCourt);
@@ -196,12 +212,24 @@ function ControlUI() {
     if (!selectedCourt) return;
 
     try {
+      // Check if this is the final set win (match ending)
+      const isMatchEnding = scoreState && (
+        (scoreState.pendingSetWin === 'A' && scoreState.setsA + 1 >= 2) ||
+        (scoreState.pendingSetWin === 'B' && scoreState.setsB + 1 >= 2)
+      );
+
       await fetch(`${API_URL}/api/score/confirmSetWin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ courtId: selectedCourt })
       });
+      
       setShowSetWinModal(false);
+      
+      // Show toast if match ended
+      if (isMatchEnding) {
+        showToast('🛑 Match complete - Recording stopped', 'success');
+      }
     } catch (error) {
       console.error('Error confirming set win:', error);
     }
@@ -334,6 +362,30 @@ function ControlUI() {
 
   return (
     <div className="min-h-screen p-4" style={{ backgroundColor: '#000429' }}>
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div 
+          className="fixed top-4 right-4 z-50 rounded-lg shadow-2xl p-4 max-w-md animate-slide-in"
+          style={{ 
+            backgroundColor: toastType === 'error' ? '#ef4444' : toastType === 'warning' ? '#f59e0b' : '#10b981',
+            color: 'white'
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <div className="text-xl">
+              {toastType === 'error' ? '❌' : toastType === 'warning' ? '⚠️' : '✅'}
+            </div>
+            <div className="font-semibold">{toastMessage}</div>
+            <button 
+              onClick={() => setToastMessage(null)}
+              className="ml-auto text-white hover:opacity-75 text-xl"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Set Win Confirmation Modal */}
       {showSetWinModal && scoreState?.pendingSetWin && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">

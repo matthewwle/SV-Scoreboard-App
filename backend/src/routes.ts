@@ -113,6 +113,13 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
     // 🆕 LOG MATCH START - Create a match log when starting to score the next match
     await createMatchLog(courtId, nextMatch.id, nextMatch.team_a, nextMatch.team_b);
     
+    // 🎥 START LARIX RECORDING - Trigger Larix to start recording
+    const { startRecording } = await import('./larixClient');
+    const larixStartResult = await startRecording(courtId, nextMatch.id);
+    if (!larixStartResult.success) {
+      console.warn(`⚠️  Larix recording start failed for Court ${courtId}: ${larixStartResult.message}`);
+    }
+    
     // Get the updated match and broadcast the initial state
     const updatedMatch = await getMatch(nextMatch.id);
     if (updatedMatch && scoreState) {
@@ -135,7 +142,12 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
       await broadcastScoreToClients(payload);
     }
     
-    res.json(nextMatch);
+    // Return match data with Larix status
+    res.json({
+      ...nextMatch,
+      larixRecordingStarted: larixStartResult.success,
+      larixMessage: larixStartResult.message
+    });
   } catch (error) {
     console.error('Error advancing to next match:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -359,6 +371,27 @@ router.post('/admin/uploadSchedule', upload.single('file'), async (req, res) => 
   } catch (error) {
     console.error('Error uploading schedule:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Test Larix API connection
+router.get('/admin/testLarix', async (req, res) => {
+  try {
+    const { testLarixConnection } = await import('./larixClient');
+    const isConnected = await testLarixConnection();
+    
+    res.json({
+      success: isConnected,
+      message: isConnected 
+        ? 'Larix API connection successful' 
+        : 'Larix API connection failed. Check LARIX_API_URL and LARIX_API_TOKEN environment variables.'
+    });
+  } catch (error) {
+    console.error('Error testing Larix connection:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error testing Larix connection' 
+    });
   }
 });
 

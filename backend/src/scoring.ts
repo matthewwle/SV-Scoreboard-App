@@ -147,6 +147,13 @@ export async function confirmSetWin(courtId: number): Promise<ScoreUpdatePayload
     
     // 🆕 LOG MATCH END - Update the match log with end time
     await updateMatchLogEndTime(match.id);
+    
+    // 🎥 STOP LARIX RECORDING - Trigger Larix to stop recording
+    const { stopRecording } = await import('./larixClient');
+    const larixStopResult = await stopRecording(courtId, match.id);
+    if (!larixStopResult.success) {
+      console.warn(`⚠️  Larix recording stop failed for Court ${courtId}: ${larixStopResult.message}`);
+    }
   }
   
   await updateMatch(match.id, {
