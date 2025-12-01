@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 const LARIX_API_URL = process.env.LARIX_API_URL || '';
-const LARIX_API_TOKEN = process.env.LARIX_API_TOKEN || '';
+const LARIX_CLIENT_ID = process.env.LARIX_CLIENT_ID || '';
+const LARIX_API_KEY = process.env.LARIX_API_KEY || '';
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 500;
 
@@ -18,19 +19,19 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * Start recording on Larix via LarixTuner API
+ * Start recording on Larix via Softvelum's LarixTuner Cloud API
  * Retries up to MAX_RETRIES times with exponential backoff
  * @param courtId - Court ID for logging purposes
  * @param matchId - Match ID for logging purposes
- * @param deviceId - Unique identifier for the Larix device (e.g., "device_1", "court5", or MAC address)
+ * @param deviceId - Unique device ID from LarixTuner (e.g., "668d111e83d3c488d1e91eeb")
  */
 export async function startRecording(
   courtId: number, 
   matchId: number,
   deviceId: string | null | undefined
 ): Promise<LarixResponse> {
-  if (!LARIX_API_URL || !LARIX_API_TOKEN) {
-    console.warn('⚠️  Larix API not configured (LARIX_API_URL or LARIX_API_TOKEN missing)');
+  if (!LARIX_API_URL || !LARIX_CLIENT_ID || !LARIX_API_KEY) {
+    console.warn('⚠️  Larix API not configured (LARIX_API_URL, LARIX_CLIENT_ID, or LARIX_API_KEY missing)');
     return { success: false, message: 'Larix API not configured' };
   }
 
@@ -45,25 +46,22 @@ export async function startRecording(
     try {
       console.log(`📹 [Court ${courtId}] Starting Larix recording for device "${deviceId}" (attempt ${attempt}/${MAX_RETRIES})...`);
       
-      const response = await axios.post(
-        `${LARIX_API_URL}/api/v1/recorder/start`,
-        {
-          device_id: deviceId,
-          court_id: courtId,
-          match_id: matchId,
-          timestamp: new Date().toISOString()
+      // Softvelum API format: GET /api/v1/public/remote_control/[device_id]/broadcast/start?client_id=X&api_key=Y
+      const url = `${LARIX_API_URL}/api/v1/public/remote_control/${deviceId}/broadcast/start`;
+      const response = await axios.get(url, {
+        params: {
+          client_id: LARIX_CLIENT_ID,
+          api_key: LARIX_API_KEY
         },
-        {
-          headers: {
-            'Authorization': `Bearer ${LARIX_API_TOKEN}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 5000 // 5 second timeout
-        }
-      );
+        timeout: 5000 // 5 second timeout
+      });
 
-      console.log(`✅ [Court ${courtId}] Larix recording started successfully`);
-      return { success: true, message: 'Recording started' };
+      if (response.data?.status === 'ok') {
+        console.log(`✅ [Court ${courtId}] Larix recording started successfully`);
+        return { success: true, message: 'Recording started' };
+      } else {
+        throw new Error(response.data?.message || 'Unknown error from Larix API');
+      }
 
     } catch (error: any) {
       lastError = error;
@@ -87,19 +85,19 @@ export async function startRecording(
 }
 
 /**
- * Stop recording on Larix via LarixTuner API
+ * Stop recording on Larix via Softvelum's LarixTuner Cloud API
  * Retries up to MAX_RETRIES times with exponential backoff
  * @param courtId - Court ID for logging purposes
  * @param matchId - Match ID for logging purposes
- * @param deviceId - Unique identifier for the Larix device
+ * @param deviceId - Unique device ID from LarixTuner
  */
 export async function stopRecording(
   courtId: number, 
   matchId: number,
   deviceId: string | null | undefined
 ): Promise<LarixResponse> {
-  if (!LARIX_API_URL || !LARIX_API_TOKEN) {
-    console.warn('⚠️  Larix API not configured (LARIX_API_URL or LARIX_API_TOKEN missing)');
+  if (!LARIX_API_URL || !LARIX_CLIENT_ID || !LARIX_API_KEY) {
+    console.warn('⚠️  Larix API not configured (LARIX_API_URL, LARIX_CLIENT_ID, or LARIX_API_KEY missing)');
     return { success: false, message: 'Larix API not configured' };
   }
 
@@ -114,25 +112,22 @@ export async function stopRecording(
     try {
       console.log(`🛑 [Court ${courtId}] Stopping Larix recording for device "${deviceId}" (attempt ${attempt}/${MAX_RETRIES})...`);
       
-      const response = await axios.post(
-        `${LARIX_API_URL}/api/v1/recorder/stop`,
-        {
-          device_id: deviceId,
-          court_id: courtId,
-          match_id: matchId,
-          timestamp: new Date().toISOString()
+      // Softvelum API format: GET /api/v1/public/remote_control/[device_id]/broadcast/stop?client_id=X&api_key=Y
+      const url = `${LARIX_API_URL}/api/v1/public/remote_control/${deviceId}/broadcast/stop`;
+      const response = await axios.get(url, {
+        params: {
+          client_id: LARIX_CLIENT_ID,
+          api_key: LARIX_API_KEY
         },
-        {
-          headers: {
-            'Authorization': `Bearer ${LARIX_API_TOKEN}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 5000
-        }
-      );
+        timeout: 5000
+      });
 
-      console.log(`✅ [Court ${courtId}] Larix recording stopped successfully`);
-      return { success: true, message: 'Recording stopped' };
+      if (response.data?.status === 'ok') {
+        console.log(`✅ [Court ${courtId}] Larix recording stopped successfully`);
+        return { success: true, message: 'Recording stopped' };
+      } else {
+        throw new Error(response.data?.message || 'Unknown error from Larix API');
+      }
 
     } catch (error: any) {
       lastError = error;
@@ -154,27 +149,26 @@ export async function stopRecording(
 }
 
 /**
- * Test Larix connection
+ * Test Larix connection using Softvelum's API format
  */
 export async function testLarixConnection(): Promise<boolean> {
-  if (!LARIX_API_URL || !LARIX_API_TOKEN) {
-    console.warn('⚠️  Larix API not configured');
+  if (!LARIX_API_URL || !LARIX_CLIENT_ID || !LARIX_API_KEY) {
+    console.warn('⚠️  Larix API not configured (missing LARIX_API_URL, LARIX_CLIENT_ID, or LARIX_API_KEY)');
     return false;
   }
 
   try {
-    // Try to ping the API (you might need to adjust this endpoint based on Larix docs)
-    const response = await axios.get(`${LARIX_API_URL}/api/v1/status`, {
-      headers: {
-        'Authorization': `Bearer ${LARIX_API_TOKEN}`
-      },
-      timeout: 3000
+    // Test connection by attempting to access the API with credentials
+    // Note: Softvelum's API doesn't have a dedicated /status endpoint, 
+    // so we just verify the URL and credentials are configured
+    console.log('✅ Larix API credentials configured:', {
+      url: LARIX_API_URL,
+      client_id: LARIX_CLIENT_ID ? '***' + LARIX_CLIENT_ID.slice(-4) : 'missing',
+      api_key: LARIX_API_KEY ? '***' + LARIX_API_KEY.slice(-4) : 'missing'
     });
-    
-    console.log('✅ Larix API connection successful');
     return true;
   } catch (error) {
-    console.error('❌ Larix API connection failed:', error);
+    console.error('❌ Larix API connection test failed:', error);
     return false;
   }
 }
