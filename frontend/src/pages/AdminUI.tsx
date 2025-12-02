@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { API_URL } from '../config';
 
 interface MatchLog {
@@ -12,6 +12,13 @@ interface MatchLog {
   created_at: string;
 }
 
+interface CourtDevice {
+  courtId: number;
+  courtName: string;
+  larixDeviceId: string | null;
+  hasCurrentMatch: boolean;
+}
+
 function AdminUI() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -21,6 +28,15 @@ function AdminUI() {
   const [matchLogs, setMatchLogs] = useState<MatchLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [logsError, setLogsError] = useState<string | null>(null);
+
+  // Device assignment state
+  const [showDeviceAssignment, setShowDeviceAssignment] = useState(false);
+  const [courtDevices, setCourtDevices] = useState<CourtDevice[]>([]);
+  const [deviceInputs, setDeviceInputs] = useState<{ [key: number]: string }>({});
+  const [loadingDevices, setLoadingDevices] = useState(false);
+  const [savingDevice, setSavingDevice] = useState<number | null>(null);
+  const [deviceError, setDeviceError] = useState<string | null>(null);
+  const [deviceSuccess, setDeviceSuccess] = useState<string | null>(null);
 
   async function handleUpload() {
     if (!file) {
@@ -104,14 +120,220 @@ function AdminUI() {
     link.click();
   }
 
+  // Load court devices from API
+  async function loadCourtDevices() {
+    setLoadingDevices(true);
+    setDeviceError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/courts/larixDevices`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch court devices');
+      }
+
+      const data: CourtDevice[] = await response.json();
+      setCourtDevices(data);
+      
+      // Initialize input values with current device IDs
+      const inputs: { [key: number]: string } = {};
+      data.forEach(court => {
+        inputs[court.courtId] = court.larixDeviceId || '';
+      });
+      setDeviceInputs(inputs);
+    } catch (err) {
+      setDeviceError(err instanceof Error ? err.message : 'Failed to load devices');
+    } finally {
+      setLoadingDevices(false);
+    }
+  }
+
+  // Save device ID for a specific court
+  async function saveDeviceId(courtId: number) {
+    const deviceId = deviceInputs[courtId]?.trim();
+    
+    if (!deviceId) {
+      setDeviceError(`Please enter a device ID for Court ${courtId}`);
+      return;
+    }
+
+    setSavingDevice(courtId);
+    setDeviceError(null);
+    setDeviceSuccess(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/court/${courtId}/larixDevice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save device ID');
+      }
+
+      const data = await response.json();
+      setDeviceSuccess(`✅ Court ${courtId} assigned to device: ${deviceId}`);
+      
+      // Update local state
+      setCourtDevices(prev => 
+        prev.map(court => 
+          court.courtId === courtId 
+            ? { ...court, larixDeviceId: deviceId }
+            : court
+        )
+      );
+
+      // Clear success message after 3 seconds
+      setTimeout(() => setDeviceSuccess(null), 3000);
+    } catch (err) {
+      setDeviceError(err instanceof Error ? err.message : 'Failed to save device ID');
+    } finally {
+      setSavingDevice(null);
+    }
+  }
+
+  // Handle opening device assignment panel
+  function handleOpenDeviceAssignment() {
+    setShowDeviceAssignment(true);
+    loadCourtDevices();
+  }
+
   return (
     <div className="min-h-screen p-8" style={{ backgroundColor: '#000429' }}>
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="rounded-xl shadow-lg p-6 mb-6" style={{ backgroundColor: '#1a1a3e' }}>
           <h1 className="text-3xl font-bold" style={{ color: '#DDFD51' }}>Admin Dashboard</h1>
-          <p className="mt-2" style={{ color: '#9a9ab8' }}>Upload match schedule spreadsheet</p>
+          <p className="mt-2" style={{ color: '#9a9ab8' }}>Manage schedules, device assignments, and logs</p>
         </div>
+
+        {/* Quick Actions */}
+        <div className="rounded-xl shadow-lg p-6 mb-6" style={{ backgroundColor: '#1a1a3e' }}>
+          <h2 className="text-xl font-bold mb-4" style={{ color: '#DDFD51' }}>Quick Actions</h2>
+          <div className="flex flex-wrap gap-4">
+            <button
+              onClick={handleOpenDeviceAssignment}
+              className="font-bold py-3 px-6 rounded-lg transition-opacity hover:opacity-80 flex items-center gap-2"
+              style={{ backgroundColor: '#DDFD51', color: '#000429' }}
+            >
+              📱 Assign Device IDs to Courts
+            </button>
+          </div>
+        </div>
+
+        {/* Device Assignment Panel */}
+        {showDeviceAssignment && (
+          <div className="rounded-xl shadow-lg p-6 mb-6" style={{ backgroundColor: '#1a1a3e' }}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-xl font-bold" style={{ color: '#DDFD51' }}>📱 Assign Larix Device IDs</h2>
+                <p className="text-sm mt-1" style={{ color: '#9a9ab8' }}>
+                  Enter the device ID from LarixTuner for each court
+                </p>
+              </div>
+              <button
+                onClick={() => setShowDeviceAssignment(false)}
+                className="text-2xl hover:opacity-70 transition-opacity"
+                style={{ color: '#DDFD51' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {deviceError && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4">
+                <strong>Error:</strong> {deviceError}
+              </div>
+            )}
+
+            {deviceSuccess && (
+              <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg mb-4">
+                {deviceSuccess}
+              </div>
+            )}
+
+            {loadingDevices ? (
+              <div className="text-center py-8" style={{ color: '#9a9ab8' }}>
+                Loading courts...
+              </div>
+            ) : courtDevices.length > 0 ? (
+              <div className="max-h-96 overflow-y-auto">
+                <table className="w-full">
+                  <thead className="sticky top-0" style={{ backgroundColor: '#1a1a3e' }}>
+                    <tr style={{ borderBottom: '2px solid #DDFD51' }}>
+                      <th className="py-3 px-4 text-left font-bold" style={{ color: '#DDFD51' }}>Court</th>
+                      <th className="py-3 px-4 text-left font-bold" style={{ color: '#DDFD51' }}>Device ID</th>
+                      <th className="py-3 px-4 text-left font-bold" style={{ color: '#DDFD51' }}>Status</th>
+                      <th className="py-3 px-4 text-center font-bold" style={{ color: '#DDFD51' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {courtDevices.map((court) => (
+                      <tr key={court.courtId} style={{ borderBottom: '1px solid #2a2a4e' }}>
+                        <td className="py-3 px-4 font-semibold" style={{ color: '#ffffff' }}>
+                          {court.courtName}
+                        </td>
+                        <td className="py-3 px-4">
+                          <input
+                            type="text"
+                            value={deviceInputs[court.courtId] || ''}
+                            onChange={(e) => setDeviceInputs(prev => ({
+                              ...prev,
+                              [court.courtId]: e.target.value
+                            }))}
+                            placeholder="Enter device ID..."
+                            className="w-full px-3 py-2 rounded-lg text-sm"
+                            style={{ 
+                              backgroundColor: '#000429', 
+                              color: '#ffffff',
+                              border: '1px solid #DDFD51'
+                            }}
+                          />
+                        </td>
+                        <td className="py-3 px-4">
+                          {court.larixDeviceId ? (
+                            <span className="text-green-400 text-sm">✅ Assigned</span>
+                          ) : (
+                            <span className="text-yellow-400 text-sm">⚠️ Not set</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <button
+                            onClick={() => saveDeviceId(court.courtId)}
+                            disabled={savingDevice === court.courtId}
+                            className="font-bold py-2 px-4 rounded-lg text-sm transition-opacity hover:opacity-80 disabled:opacity-50"
+                            style={{ backgroundColor: '#DDFD51', color: '#000429' }}
+                          >
+                            {savingDevice === court.courtId ? 'Saving...' : 'Save'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8" style={{ color: '#9a9ab8' }}>
+                No courts found. Make sure the backend is running.
+              </div>
+            )}
+
+            <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: '#000429' }}>
+              <p className="text-sm" style={{ color: '#9a9ab8' }}>
+                <strong style={{ color: '#DDFD51' }}>💡 Tip:</strong> Find device IDs in your LarixTuner dashboard at{' '}
+                <a 
+                  href="https://larixtuner.softvelum.com/account/devices" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  style={{ color: '#DDFD51', textDecoration: 'underline' }}
+                >
+                  larixtuner.softvelum.com/account/devices
+                </a>
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Upload Section */}
         <div className="rounded-xl shadow-lg p-8" style={{ backgroundColor: '#1a1a3e' }}>
