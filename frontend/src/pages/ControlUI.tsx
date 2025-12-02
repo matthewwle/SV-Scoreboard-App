@@ -14,8 +14,28 @@ function ControlUI() {
   const [showSetWinModal, setShowSetWinModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<'success' | 'error' | 'warning'>('success');
+  const [tournamentLabel, setTournamentLabel] = useState('Winter Formal');
 
   const { scoreState, isConnected } = useSocket(selectedCourt);
+
+  // Fetch tournament label
+  useEffect(() => {
+    async function fetchTournamentLabel() {
+      try {
+        const response = await fetch(`${API_URL}/api/settings/tournamentLabel`);
+        if (response.ok) {
+          const data = await response.json();
+          setTournamentLabel(data.label || 'Winter Formal');
+        }
+      } catch (error) {
+        console.error('Error fetching tournament label:', error);
+      }
+    }
+    fetchTournamentLabel();
+    // Refresh every 30 seconds in case it's changed
+    const interval = setInterval(fetchTournamentLabel, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Toast notification helper
   function showToast(message: string, type: 'success' | 'error' | 'warning' = 'success') {
@@ -354,7 +374,7 @@ function ControlUI() {
 
         {/* Bottom Bar */}
         <div className="fixed bottom-0 left-0 right-0 py-4 text-center font-bold text-xl" style={{ backgroundColor: '#DDFD51', color: '#000429' }}>
-          Winter Formal Court {selectedCourt}
+          {tournamentLabel} Court {selectedCourt}
         </div>
       </div>
     );
@@ -544,9 +564,9 @@ function ControlUI() {
         </div>
       </div>
 
-      {/* Bottom Bar - Winter Formal */}
+      {/* Bottom Bar - Tournament Label */}
       <div className="fixed bottom-0 left-0 right-0 py-4 text-center font-bold text-xl" style={{ backgroundColor: '#DDFD51', color: '#000429' }}>
-        Winter Formal Court {selectedCourt}
+        {tournamentLabel} Court {selectedCourt}
       </div>
     </div>
   );

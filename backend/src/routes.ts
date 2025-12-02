@@ -447,5 +447,33 @@ router.get('/admin/courts/larixDevices', async (req, res) => {
   }
 });
 
+// Tournament Label Settings
+// Simple in-memory storage (persists until server restart)
+// For true persistence, could be stored in database
+let tournamentLabel = 'Winter Formal';
+
+// Get tournament label
+router.get('/settings/tournamentLabel', (req, res) => {
+  res.json({ label: tournamentLabel });
+});
+
+// Set tournament label
+router.post('/settings/tournamentLabel', (req, res) => {
+  const { label } = req.body;
+  
+  if (!label || typeof label !== 'string') {
+    return res.status(400).json({ error: 'Label (string) is required' });
+  }
+  
+  tournamentLabel = label.trim();
+  console.log(`🏷️ Tournament label updated to: "${tournamentLabel}"`);
+  
+  res.json({ 
+    success: true, 
+    label: tournamentLabel,
+    message: `Tournament label updated to "${tournamentLabel}"` 
+  });
+});
+
 export default router;
 

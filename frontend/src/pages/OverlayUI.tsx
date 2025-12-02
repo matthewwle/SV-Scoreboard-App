@@ -9,6 +9,7 @@ function OverlayUI() {
   const courtIdNum = courtId ? parseInt(courtId) : null;
   const { scoreState } = useSocket(courtIdNum);
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
+  const [tournamentLabel, setTournamentLabel] = useState('Winter Formal');
 
   useEffect(() => {
     if (!courtIdNum) return;
@@ -27,6 +28,25 @@ function OverlayUI() {
 
     loadMatch();
   }, [courtIdNum]);
+
+  // Fetch tournament label
+  useEffect(() => {
+    async function fetchTournamentLabel() {
+      try {
+        const response = await fetch(`${API_URL}/api/settings/tournamentLabel`);
+        if (response.ok) {
+          const data = await response.json();
+          setTournamentLabel(data.label || 'Winter Formal');
+        }
+      } catch (error) {
+        console.error('Error fetching tournament label:', error);
+      }
+    }
+    fetchTournamentLabel();
+    // Refresh every 30 seconds in case it's changed
+    const interval = setInterval(fetchTournamentLabel, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div style={{ transform: 'scale(0.25)', transformOrigin: 'top left', width: '400vw', height: '400vh' }}>
@@ -108,9 +128,9 @@ function OverlayUI() {
               </div>
             </div>
 
-            {/* Bottom Bar - Winter Formal */}
+            {/* Bottom Bar - Tournament Label */}
             <div className="py-2 px-6 text-center font-bold text-lg" style={{ backgroundColor: '#DDFD51', color: '#000429' }}>
-              Winter Formal - Court {courtIdNum}
+              {tournamentLabel} - Court {courtIdNum}
             </div>
           </div>
         </div>

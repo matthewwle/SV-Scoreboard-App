@@ -38,6 +38,13 @@ function AdminUI() {
   const [deviceError, setDeviceError] = useState<string | null>(null);
   const [deviceSuccess, setDeviceSuccess] = useState<string | null>(null);
 
+  // Tournament label state
+  const [showLabelEditor, setShowLabelEditor] = useState(false);
+  const [tournamentLabel, setTournamentLabel] = useState('Winter Formal');
+  const [labelInput, setLabelInput] = useState('');
+  const [savingLabel, setSavingLabel] = useState(false);
+  const [labelSuccess, setLabelSuccess] = useState<string | null>(null);
+
   async function handleUpload() {
     if (!file) {
       setError('Please select a file');
@@ -199,6 +206,58 @@ function AdminUI() {
     loadCourtDevices();
   }
 
+  // Load tournament label from API
+  async function loadTournamentLabel() {
+    try {
+      const response = await fetch(`${API_URL}/api/settings/tournamentLabel`);
+      if (response.ok) {
+        const data = await response.json();
+        setTournamentLabel(data.label || 'Winter Formal');
+      }
+    } catch (err) {
+      console.error('Failed to load tournament label:', err);
+    }
+  }
+
+  // Save tournament label to API
+  async function saveTournamentLabel() {
+    setSavingLabel(true);
+    setLabelSuccess(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/settings/tournamentLabel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: labelInput })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save label');
+      }
+
+      setTournamentLabel(labelInput);
+      setLabelSuccess('✅ Tournament label saved!');
+      
+      // Close modal after 1.5 seconds
+      setTimeout(() => {
+        setShowLabelEditor(false);
+        setLabelSuccess(null);
+      }, 1500);
+    } catch (err) {
+      console.error('Failed to save tournament label:', err);
+    } finally {
+      setSavingLabel(false);
+    }
+  }
+
+  // Handle opening label editor
+  function handleOpenLabelEditor() {
+    loadTournamentLabel();
+    setLabelInput(tournamentLabel);
+    setShowLabelEditor(true);
+    setLabelSuccess(null);
+  }
+
   return (
     <div className="min-h-screen p-8" style={{ backgroundColor: '#000429' }}>
       <div className="max-w-4xl mx-auto">
@@ -219,8 +278,85 @@ function AdminUI() {
             >
               📱 Assign Device IDs to Courts
             </button>
+            <button
+              onClick={handleOpenLabelEditor}
+              className="font-bold py-3 px-6 rounded-lg transition-opacity hover:opacity-80 flex items-center gap-2"
+              style={{ backgroundColor: '#DDFD51', color: '#000429' }}
+            >
+              🏷️ Edit Tournament Label
+            </button>
+          </div>
+          <div className="mt-3 text-sm" style={{ color: '#9a9ab8' }}>
+            Current label: <span style={{ color: '#DDFD51' }}>"{tournamentLabel}"</span>
           </div>
         </div>
+
+        {/* Tournament Label Editor Modal */}
+        {showLabelEditor && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="rounded-2xl shadow-2xl p-8 max-w-md w-full" style={{ backgroundColor: '#1a1a3e' }}>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold" style={{ color: '#DDFD51' }}>
+                  🏷️ Edit Tournament Label
+                </h2>
+                <button
+                  onClick={() => setShowLabelEditor(false)}
+                  className="text-2xl hover:opacity-70 transition-opacity"
+                  style={{ color: '#DDFD51' }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="text-sm mb-4" style={{ color: '#9a9ab8' }}>
+                This label appears on all scoreboards and control interfaces
+              </p>
+
+              <div className="mb-6">
+                <label className="block text-sm font-semibold mb-2" style={{ color: '#DDFD51' }}>
+                  Tournament Label
+                </label>
+                <input
+                  type="text"
+                  value={labelInput}
+                  onChange={(e) => setLabelInput(e.target.value)}
+                  placeholder="Enter tournament name..."
+                  className="w-full px-4 py-3 rounded-lg text-lg"
+                  style={{ 
+                    backgroundColor: '#000429', 
+                    color: '#ffffff',
+                    border: '2px solid #DDFD51'
+                  }}
+                  autoFocus
+                />
+              </div>
+
+              {labelSuccess && (
+                <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg mb-4 text-center">
+                  {labelSuccess}
+                </div>
+              )}
+
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setShowLabelEditor(false)}
+                  className="flex-1 py-3 px-6 rounded-lg font-bold transition-opacity hover:opacity-80"
+                  style={{ backgroundColor: '#2a2a4e', color: '#ffffff' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveTournamentLabel}
+                  disabled={savingLabel || !labelInput.trim()}
+                  className="flex-1 py-3 px-6 rounded-lg font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
+                  style={{ backgroundColor: '#DDFD51', color: '#000429' }}
+                >
+                  {savingLabel ? 'Saving...' : 'Save Label'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Device Assignment Panel */}
         {showDeviceAssignment && (
