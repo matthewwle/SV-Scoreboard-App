@@ -14,7 +14,8 @@ import {
   updateMatch,
   createMatchLog,
   updateMatchLogEndTime,
-  getAllMatchLogs
+  getAllMatchLogs,
+  updateCourtLarixDeviceId
 } from './db';
 import {
   incrementScore,
@@ -114,10 +115,11 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
     await createMatchLog(courtId, nextMatch.id, nextMatch.team_a, nextMatch.team_b);
     
     // 🎥 START LARIX RECORDING - Trigger Larix to start recording
+    let larixStartResult = { success: false, message: 'Not configured' };
     const court = await getCourt(courtId);
     if (court?.larix_device_id) {
       const { startRecording } = await import('./larixClient');
-      const larixStartResult = await startRecording(courtId, nextMatch.id, court.larix_device_id);
+      larixStartResult = await startRecording(courtId, nextMatch.id, court.larix_device_id);
       if (!larixStartResult.success) {
         console.warn(`⚠️  Larix recording start failed for Court ${courtId}: ${larixStartResult.message}`);
       }
