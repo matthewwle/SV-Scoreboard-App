@@ -115,7 +115,7 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
     await createMatchLog(courtId, nextMatch.id, nextMatch.team_a, nextMatch.team_b);
     
     // 🎥 START LARIX RECORDING - Trigger Larix to start recording
-    let larixStartResult = { success: false, message: 'Not configured' };
+    let larixStartResult: { success: boolean; message?: string } = { success: false, message: 'Not configured' };
     const court = await getCourt(courtId);
     if (court?.larix_device_id) {
       const { startRecording } = await import('./larixClient');
