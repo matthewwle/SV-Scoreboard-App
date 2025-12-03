@@ -131,7 +131,7 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
     // 🔔 SEND MATCH START WEBHOOK
     const { sendMatchStartWebhook, setTournamentLabel } = await import('./webhookClient');
     setTournamentLabel(tournamentLabel); // Sync tournament label
-    await sendMatchStartWebhook(courtId, nextMatch.id);
+    await sendMatchStartWebhook(courtId, nextMatch.external_match_id);
     
     // Get the updated match and broadcast the initial state
     const updatedMatch = await getMatch(nextMatch.id);
@@ -378,7 +378,8 @@ router.post('/admin/uploadSchedule', upload.single('file'), async (req, res) => 
         sets_a: 0,
         sets_b: 0,
         start_time: row.StartTime,
-        is_completed: false
+        is_completed: false,
+        external_match_id: row.MatchID || null  // Store MatchID from spreadsheet
       });
       
       if (match) {

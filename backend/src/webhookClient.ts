@@ -23,18 +23,18 @@ interface WebhookResponse {
  */
 export async function sendMatchStartWebhook(
   courtId: number,
-  matchId: number
+  externalMatchId: string | null | undefined
 ): Promise<WebhookResponse> {
   const time = new Date().toISOString();
   
   try {
-    console.log(`🔔 Sending match START webhook for Court ${courtId}, Match ${matchId}...`);
+    console.log(`🔔 Sending match START webhook for Court ${courtId}, MatchID ${externalMatchId}...`);
     
     const payload = {
       Court: courtId,
       Time: time,
       Event: 'Start',
-      MatchID: matchId,
+      MatchID: externalMatchId || 'N/A',  // Use spreadsheet MatchID
       TournamentID: currentTournamentLabel
     };
     
@@ -57,18 +57,18 @@ export async function sendMatchStartWebhook(
  */
 export async function sendMatchEndWebhook(
   courtId: number,
-  matchId: number
+  externalMatchId: string | null | undefined
 ): Promise<WebhookResponse> {
   const time = new Date().toISOString();
   
   try {
-    console.log(`🔔 Sending match END webhook for Court ${courtId}, Match ${matchId}...`);
+    console.log(`🔔 Sending match END webhook for Court ${courtId}, MatchID ${externalMatchId}...`);
     
     const payload = {
       Court: courtId,
       Time: time,
       Event: 'Stop',
-      MatchID: matchId,
+      MatchID: externalMatchId || 'N/A',  // Use spreadsheet MatchID
       TournamentID: currentTournamentLabel
     };
     

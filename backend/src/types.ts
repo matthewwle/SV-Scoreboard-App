@@ -16,6 +16,7 @@ export interface Match {
   sets_b: number;
   start_time: string;
   is_completed: boolean;
+  external_match_id?: string | null;  // MatchID from spreadsheet
   created_at?: string;
 }
 
