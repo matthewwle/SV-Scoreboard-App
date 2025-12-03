@@ -127,6 +127,10 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
       console.log(`ℹ️  [Court ${courtId}] No Larix device configured - skipping recording start`);
     }
     
+    // 🔔 SEND MATCH START WEBHOOK
+    const { sendMatchStartWebhook } = await import('./webhookClient');
+    await sendMatchStartWebhook(nextMatch.id, nextMatch.team_a, nextMatch.team_b);
+    
     // Get the updated match and broadcast the initial state
     const updatedMatch = await getMatch(nextMatch.id);
     if (updatedMatch && scoreState) {
