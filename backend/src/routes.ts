@@ -129,8 +129,9 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
     }
     
     // 🔔 SEND MATCH START WEBHOOK
-    const { sendMatchStartWebhook } = await import('./webhookClient');
-    await sendMatchStartWebhook(nextMatch.id, nextMatch.team_a, nextMatch.team_b);
+    const { sendMatchStartWebhook, setTournamentLabel } = await import('./webhookClient');
+    setTournamentLabel(tournamentLabel); // Sync tournament label
+    await sendMatchStartWebhook(courtId, nextMatch.id);
     
     // Get the updated match and broadcast the initial state
     const updatedMatch = await getMatch(nextMatch.id);

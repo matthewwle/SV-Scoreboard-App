@@ -2,6 +2,17 @@ import axios from 'axios';
 
 const WEBHOOK_URL = 'https://eox46m41zgwlx3e.m.pipedream.net';
 
+// In-memory tournament label (synced from routes.ts)
+let currentTournamentLabel = 'Winter Formal';
+
+export function setTournamentLabel(label: string) {
+  currentTournamentLabel = label;
+}
+
+export function getTournamentLabel(): string {
+  return currentTournamentLabel;
+}
+
 interface WebhookResponse {
   success: boolean;
   message?: string;
@@ -11,21 +22,20 @@ interface WebhookResponse {
  * Send webhook for match start
  */
 export async function sendMatchStartWebhook(
-  matchId: number,
-  teamName1: string,
-  teamName2: string
+  courtId: number,
+  matchId: number
 ): Promise<WebhookResponse> {
-  const startTime = new Date().toISOString();
+  const time = new Date().toISOString();
   
   try {
-    console.log(`🔔 Sending match START webhook for Match ${matchId}...`);
+    console.log(`🔔 Sending match START webhook for Court ${courtId}, Match ${matchId}...`);
     
     const payload = {
-      event: 'match_start',
-      matchID: matchId,
-      teamName1,
-      teamName2,
-      startTime
+      Court: courtId,
+      Time: time,
+      Event: 'Start',
+      MatchID: matchId,
+      TournamentID: currentTournamentLabel
     };
     
     await axios.post(WEBHOOK_URL, payload, {
@@ -46,21 +56,20 @@ export async function sendMatchStartWebhook(
  * Send webhook for match end
  */
 export async function sendMatchEndWebhook(
-  matchId: number,
-  teamName1: string,
-  teamName2: string
+  courtId: number,
+  matchId: number
 ): Promise<WebhookResponse> {
-  const stopTime = new Date().toISOString();
+  const time = new Date().toISOString();
   
   try {
-    console.log(`🔔 Sending match END webhook for Match ${matchId}...`);
+    console.log(`🔔 Sending match END webhook for Court ${courtId}, Match ${matchId}...`);
     
     const payload = {
-      event: 'match_end',
-      matchID: matchId,
-      teamName1,
-      teamName2,
-      stopTime
+      Court: courtId,
+      Time: time,
+      Event: 'Stop',
+      MatchID: matchId,
+      TournamentID: currentTournamentLabel
     };
     
     await axios.post(WEBHOOK_URL, payload, {
