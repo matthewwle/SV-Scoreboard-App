@@ -15,7 +15,8 @@ import {
   createMatchLog,
   updateMatchLogEndTime,
   getAllMatchLogs,
-  updateCourtLarixDeviceId
+  updateCourtLarixDeviceId,
+  deleteMatchesForCourt
 } from './db';
 import {
   incrementScore,
@@ -353,6 +354,19 @@ router.post('/admin/uploadSchedule', upload.single('file'), async (req, res) => 
     const sheet = workbook.Sheets[sheetName];
     const rows: UploadScheduleRow[] = XLSX.utils.sheet_to_json(sheet);
     
+    // Get unique court IDs from the upload
+    const courtIds = [...new Set(rows.map(row => row.Court))];
+    
+    // Reset each court: delete old matches and clear current match
+    console.log(`🔄 Resetting ${courtIds.length} courts for new schedule...`);
+    for (const courtId of courtIds) {
+      // Delete all existing matches for this court
+      await deleteMatchesForCourt(courtId);
+      // Reset current match to null (goes back to pause screen)
+      await updateCourtMatch(courtId, null);
+      console.log(`✅ Court ${courtId} reset`);
+    }
+    
     const createdMatches = [];
     
     for (const row of rows) {
@@ -369,14 +383,17 @@ router.post('/admin/uploadSchedule', upload.single('file'), async (req, res) => 
       if (match) {
         createdMatches.push(match);
         
-        // DON'T auto-assign matches - require "Start Scoring Next Match" button
+        // DON'T auto-assign matches - require "Begin Match" button
         // This ensures all matches (including the first one) get logged properly
       }
     }
     
+    console.log(`📊 Schedule uploaded: ${createdMatches.length} matches created for ${courtIds.length} courts`);
+    
     res.json({
       success: true,
       matchesCreated: createdMatches.length,
+      courtsReset: courtIds.length,
       matches: createdMatches
     });
   } catch (error) {
