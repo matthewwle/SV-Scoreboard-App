@@ -351,67 +351,33 @@ router.post('/admin/uploadSchedule', upload.single('file'), async (req, res) => 
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-    const rawRows: any[] = XLSX.utils.sheet_to_json(sheet);
-    
-    console.log('📊 Uploaded file parsed. Raw rows:', rawRows.length);
-    if (rawRows.length > 0) {
-      console.log('📊 First row columns:', Object.keys(rawRows[0]));
-      console.log('📊 First row data:', rawRows[0]);
-    }
+    const rows: UploadScheduleRow[] = XLSX.utils.sheet_to_json(sheet);
     
     const createdMatches = [];
-    const skippedRows = [];
     
-    for (let i = 0; i < rawRows.length; i++) {
-      const raw = rawRows[i];
-      
-      // Flexible column name matching (case-insensitive)
-      const getColumn = (names: string[]) => {
-        for (const name of names) {
-          const key = Object.keys(raw).find(k => k.toLowerCase().trim() === name.toLowerCase());
-          if (key && raw[key] !== undefined && raw[key] !== '') {
-            return raw[key];
-          }
-        }
-        return null;
-      };
-      
-      const court = getColumn(['Court', 'court', 'Court #', 'court #', 'CourtID', 'court_id']);
-      const teamA = getColumn(['TeamA', 'teama', 'Team A', 'team a', 'Team1', 'team1', 'Home', 'home']);
-      const teamB = getColumn(['TeamB', 'teamb', 'Team B', 'team b', 'Team2', 'team2', 'Away', 'away']);
-      const startTime = getColumn(['StartTime', 'starttime', 'Start Time', 'start time', 'Time', 'time', 'Start']);
-      
-      // Validate required fields
-      if (!court || !teamA || !teamB) {
-        console.warn(`⚠️ Row ${i + 1} skipped - missing required fields. Court: ${court}, TeamA: ${teamA}, TeamB: ${teamB}`);
-        skippedRows.push({ row: i + 1, reason: 'Missing required fields', data: raw });
-        continue;
-      }
-      
+    for (const row of rows) {
       const match = await createMatch({
-        court_id: typeof court === 'number' ? court : parseInt(String(court)),
-        team_a: String(teamA).trim(),
-        team_b: String(teamB).trim(),
+        court_id: row.Court,
+        team_a: row.TeamA,
+        team_b: row.TeamB,
         sets_a: 0,
         sets_b: 0,
-        start_time: startTime ? String(startTime).trim() : 'TBD',
+        start_time: row.StartTime,
         is_completed: false
       });
       
       if (match) {
         createdMatches.push(match);
-        console.log(`✅ Created match: Court ${match.court_id} - ${match.team_a} vs ${match.team_b}`);
+        
+        // DON'T auto-assign matches - require "Start Scoring Next Match" button
+        // This ensures all matches (including the first one) get logged properly
       }
     }
-    
-    console.log(`📊 Upload complete: ${createdMatches.length} matches created, ${skippedRows.length} rows skipped`);
     
     res.json({
       success: true,
       matchesCreated: createdMatches.length,
-      rowsSkipped: skippedRows.length,
-      matches: createdMatches,
-      skipped: skippedRows.length > 0 ? skippedRows : undefined
+      matches: createdMatches
     });
   } catch (error) {
     console.error('Error uploading schedule:', error);
