@@ -368,7 +368,22 @@ function ControlUI() {
             className="w-full font-bold py-6 px-6 rounded-xl text-2xl transition-opacity disabled:opacity-50"
             style={{ backgroundColor: '#DDFD51', color: '#000429' }}
           >
-            Start Scoring Next Match
+            Begin Match
+          </button>
+
+          {/* Change Court Button */}
+          <button
+            onClick={() => {
+              localStorage.removeItem('courtId');
+              setSelectedCourt(null);
+              setCurrentMatch(null);
+              setShowCourtSelect(true);
+              setShowPauseScreen(false);
+            }}
+            className="w-full mt-4 font-bold py-4 px-6 rounded-xl text-lg transition-opacity hover:opacity-80"
+            style={{ backgroundColor: '#2a2a4e', color: '#9a9ab8', border: '1px solid #9a9ab8' }}
+          >
+            ← Change Court
           </button>
         </div>
 
