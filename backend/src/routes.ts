@@ -480,7 +480,7 @@ router.get('/settings/tournamentLabel', (req, res) => {
 });
 
 // Set tournament label
-router.post('/settings/tournamentLabel', (req, res) => {
+router.post('/settings/tournamentLabel', async (req, res) => {
   const { label } = req.body;
   
   if (!label || typeof label !== 'string') {
@@ -488,6 +488,11 @@ router.post('/settings/tournamentLabel', (req, res) => {
   }
   
   tournamentLabel = label.trim();
+  
+  // Sync to webhook client so webhooks use the correct label
+  const { setTournamentLabel } = await import('./webhookClient');
+  setTournamentLabel(tournamentLabel);
+  
   console.log(`🏷️ Tournament label updated to: "${tournamentLabel}"`);
   
   res.json({ 
