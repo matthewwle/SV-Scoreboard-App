@@ -16,7 +16,11 @@ import {
   updateMatchLogEndTime,
   getAllMatchLogs,
   updateCourtLarixDeviceId,
-  deleteMatchesForCourt
+  deleteMatchesForCourt,
+  getAllMatchesForCourt,
+  deleteMatch,
+  getMatchesAfter,
+  getLastMatchForCourt
 } from './db';
 import {
   incrementScore,
@@ -501,6 +505,175 @@ router.post('/settings/tournamentLabel', async (req, res) => {
     label: tournamentLabel,
     message: `Tournament label updated to "${tournamentLabel}"` 
   });
+});
+
+// =====================================================
+// SCHEDULE EDITOR APIs
+// =====================================================
+
+// Get all matches for a court (for Schedule Editor)
+router.get('/schedule/:courtId', async (req, res) => {
+  try {
+    const courtId = parseInt(req.params.courtId);
+    const matches = await getAllMatchesForCourt(courtId);
+    
+    res.json({
+      courtId,
+      schedule: matches.map(m => ({
+        id: m.id,
+        time: m.start_time,
+        teamA: m.team_a,
+        teamB: m.team_b,
+        externalMatchId: m.external_match_id,
+        isCompleted: m.is_completed
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching schedule:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update a single match (team names only)
+router.post('/schedule/:courtId/update', async (req, res) => {
+  try {
+    const courtId = parseInt(req.params.courtId);
+    const { id, teamA, teamB } = req.body;
+    
+    if (!id || !teamA || !teamB) {
+      return res.status(400).json({ error: 'id, teamA, and teamB are required' });
+    }
+    
+    // Verify match belongs to this court
+    const match = await getMatch(id);
+    if (!match || match.court_id !== courtId) {
+      return res.status(404).json({ error: 'Match not found on this court' });
+    }
+    
+    const updatedMatch = await updateMatch(id, {
+      team_a: teamA.trim(),
+      team_b: teamB.trim()
+    });
+    
+    if (!updatedMatch) {
+      return res.status(500).json({ error: 'Failed to update match' });
+    }
+    
+    console.log(`📝 Schedule updated: Match ${id} on Court ${courtId} - ${teamA} vs ${teamB}`);
+    
+    res.json({
+      success: true,
+      message: 'Game updated',
+      match: {
+        id: updatedMatch.id,
+        time: updatedMatch.start_time,
+        teamA: updatedMatch.team_a,
+        teamB: updatedMatch.team_b
+      }
+    });
+  } catch (error) {
+    console.error('Error updating schedule:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete a match and shift later games up by 1 hour
+router.delete('/schedule/:courtId/:matchId', async (req, res) => {
+  try {
+    const courtId = parseInt(req.params.courtId);
+    const matchId = parseInt(req.params.matchId);
+    
+    // Get the match to delete
+    const matchToDelete = await getMatch(matchId);
+    if (!matchToDelete || matchToDelete.court_id !== courtId) {
+      return res.status(404).json({ error: 'Match not found on this court' });
+    }
+    
+    // Get all matches after this one (to shift times)
+    const laterMatches = await getMatchesAfter(courtId, matchId);
+    
+    // Delete the match
+    const deleted = await deleteMatch(matchId);
+    if (!deleted) {
+      return res.status(500).json({ error: 'Failed to delete match' });
+    }
+    
+    // Shift later matches up by 1 hour
+    for (const match of laterMatches) {
+      const currentTime = new Date(match.start_time);
+      currentTime.setHours(currentTime.getHours() - 1);
+      await updateMatch(match.id, { start_time: currentTime.toISOString() });
+    }
+    
+    console.log(`🗑️ Schedule: Deleted match ${matchId} on Court ${courtId}, shifted ${laterMatches.length} later games`);
+    
+    res.json({
+      success: true,
+      message: 'Game deleted',
+      gamesShifted: laterMatches.length
+    });
+  } catch (error) {
+    console.error('Error deleting from schedule:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Add a new game at the end of the schedule
+router.post('/schedule/:courtId/add', async (req, res) => {
+  try {
+    const courtId = parseInt(req.params.courtId);
+    const { teamA, teamB, externalMatchId } = req.body;
+    
+    if (!teamA || !teamB) {
+      return res.status(400).json({ error: 'teamA and teamB are required' });
+    }
+    
+    // Get the last match to calculate the new time
+    const lastMatch = await getLastMatchForCourt(courtId);
+    
+    let newStartTime: Date;
+    if (lastMatch && lastMatch.start_time) {
+      // Add 1 hour to the last match time
+      newStartTime = new Date(lastMatch.start_time);
+      newStartTime.setHours(newStartTime.getHours() + 1);
+    } else {
+      // Default to 8:00 AM today if no matches exist
+      newStartTime = new Date();
+      newStartTime.setHours(8, 0, 0, 0);
+    }
+    
+    const newMatch = await createMatch({
+      court_id: courtId,
+      team_a: teamA.trim(),
+      team_b: teamB.trim(),
+      sets_a: 0,
+      sets_b: 0,
+      start_time: newStartTime.toISOString(),
+      is_completed: false,
+      external_match_id: externalMatchId || null
+    });
+    
+    if (!newMatch) {
+      return res.status(500).json({ error: 'Failed to create match' });
+    }
+    
+    console.log(`➕ Schedule: Added new match on Court ${courtId} - ${teamA} vs ${teamB} at ${newStartTime.toISOString()}`);
+    
+    res.json({
+      success: true,
+      message: 'Game added',
+      match: {
+        id: newMatch.id,
+        time: newMatch.start_time,
+        teamA: newMatch.team_a,
+        teamB: newMatch.team_b,
+        externalMatchId: newMatch.external_match_id
+      }
+    });
+  } catch (error) {
+    console.error('Error adding to schedule:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 export default router;

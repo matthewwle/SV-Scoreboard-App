@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { API_URL } from '../config';
 
 interface MatchLog {
@@ -17,6 +17,20 @@ interface CourtDevice {
   courtName: string;
   larixDeviceId: string | null;
   hasCurrentMatch: boolean;
+}
+
+interface ScheduleGame {
+  id: number;
+  time: string;
+  teamA: string;
+  teamB: string;
+  externalMatchId: string | null;
+  isCompleted: boolean;
+}
+
+interface Court {
+  id: number;
+  name: string;
 }
 
 function AdminUI() {
@@ -44,6 +58,22 @@ function AdminUI() {
   const [labelInput, setLabelInput] = useState('');
   const [savingLabel, setSavingLabel] = useState(false);
   const [labelSuccess, setLabelSuccess] = useState<string | null>(null);
+
+  // Schedule Editor state
+  const [showScheduleEditor, setShowScheduleEditor] = useState(false);
+  const [courts, setCourts] = useState<Court[]>([]);
+  const [selectedCourtId, setSelectedCourtId] = useState<number | null>(null);
+  const [scheduleGames, setScheduleGames] = useState<ScheduleGame[]>([]);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [scheduleSuccess, setScheduleSuccess] = useState<string | null>(null);
+  const [editingGames, setEditingGames] = useState<{ [key: number]: { teamA: string; teamB: string } }>({});
+  const [savingGameId, setSavingGameId] = useState<number | null>(null);
+  const [deletingGameId, setDeletingGameId] = useState<number | null>(null);
+  const [showAddGameModal, setShowAddGameModal] = useState(false);
+  const [newGameTeamA, setNewGameTeamA] = useState('');
+  const [newGameTeamB, setNewGameTeamB] = useState('');
+  const [addingGame, setAddingGame] = useState(false);
 
   async function handleUpload() {
     if (!file) {
@@ -258,6 +288,201 @@ function AdminUI() {
     setLabelSuccess(null);
   }
 
+  // ==========================================
+  // SCHEDULE EDITOR FUNCTIONS
+  // ==========================================
+
+  // Load courts list
+  async function loadCourts() {
+    try {
+      const response = await fetch(`${API_URL}/api/courts`);
+      if (response.ok) {
+        const data = await response.json();
+        setCourts(data);
+      }
+    } catch (err) {
+      console.error('Failed to load courts:', err);
+    }
+  }
+
+  // Load schedule for selected court
+  async function loadSchedule(courtId: number) {
+    setLoadingSchedule(true);
+    setScheduleError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/schedule/${courtId}`);
+      if (!response.ok) {
+        throw new Error('Failed to load schedule');
+      }
+
+      const data = await response.json();
+      setScheduleGames(data.schedule || []);
+      
+      // Initialize editing state
+      const editing: { [key: number]: { teamA: string; teamB: string } } = {};
+      (data.schedule || []).forEach((game: ScheduleGame) => {
+        editing[game.id] = { teamA: game.teamA, teamB: game.teamB };
+      });
+      setEditingGames(editing);
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : 'Failed to load schedule');
+    } finally {
+      setLoadingSchedule(false);
+    }
+  }
+
+  // Handle court selection change
+  function handleCourtChange(courtId: number) {
+    setSelectedCourtId(courtId);
+    loadSchedule(courtId);
+  }
+
+  // Save game changes
+  async function saveGame(gameId: number) {
+    if (!selectedCourtId) return;
+    
+    const gameData = editingGames[gameId];
+    if (!gameData) return;
+
+    setSavingGameId(gameId);
+    setScheduleError(null);
+    setScheduleSuccess(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/schedule/${selectedCourtId}/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: gameId,
+          teamA: gameData.teamA,
+          teamB: gameData.teamB
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update game');
+      }
+
+      setScheduleSuccess('✅ Game updated');
+      
+      // Update local state
+      setScheduleGames(prev => 
+        prev.map(g => g.id === gameId 
+          ? { ...g, teamA: gameData.teamA, teamB: gameData.teamB }
+          : g
+        )
+      );
+
+      setTimeout(() => setScheduleSuccess(null), 3000);
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSavingGameId(null);
+    }
+  }
+
+  // Delete game and shift times
+  async function deleteGame(gameId: number) {
+    if (!selectedCourtId) return;
+    
+    if (!confirm('Delete this game? Later games will shift up by 1 hour.')) {
+      return;
+    }
+
+    setDeletingGameId(gameId);
+    setScheduleError(null);
+    setScheduleSuccess(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/schedule/${selectedCourtId}/${gameId}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete game');
+      }
+
+      const data = await response.json();
+      setScheduleSuccess(`✅ Game deleted. ${data.gamesShifted} games shifted.`);
+      
+      // Reload schedule to get updated times
+      loadSchedule(selectedCourtId);
+
+      setTimeout(() => setScheduleSuccess(null), 3000);
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : 'Failed to delete');
+    } finally {
+      setDeletingGameId(null);
+    }
+  }
+
+  // Add new game
+  async function addGame() {
+    if (!selectedCourtId) return;
+    if (!newGameTeamA.trim() || !newGameTeamB.trim()) {
+      setScheduleError('Please enter both team names');
+      return;
+    }
+
+    setAddingGame(true);
+    setScheduleError(null);
+    setScheduleSuccess(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/schedule/${selectedCourtId}/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          teamA: newGameTeamA.trim(),
+          teamB: newGameTeamB.trim()
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add game');
+      }
+
+      setScheduleSuccess('✅ Game added');
+      setShowAddGameModal(false);
+      setNewGameTeamA('');
+      setNewGameTeamB('');
+      
+      // Reload schedule
+      loadSchedule(selectedCourtId);
+
+      setTimeout(() => setScheduleSuccess(null), 3000);
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : 'Failed to add game');
+    } finally {
+      setAddingGame(false);
+    }
+  }
+
+  // Open schedule editor
+  function handleOpenScheduleEditor() {
+    setShowScheduleEditor(true);
+    loadCourts();
+    setSelectedCourtId(null);
+    setScheduleGames([]);
+    setScheduleError(null);
+    setScheduleSuccess(null);
+  }
+
+  // Format time for display
+  function formatTime(isoString: string): string {
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    } catch {
+      return isoString;
+    }
+  }
+
   return (
     <div className="min-h-screen p-8" style={{ backgroundColor: '#000429' }}>
       <div className="max-w-4xl mx-auto">
@@ -271,6 +496,13 @@ function AdminUI() {
         <div className="rounded-xl shadow-lg p-6 mb-6" style={{ backgroundColor: '#1a1a3e' }}>
           <h2 className="text-xl font-bold mb-4" style={{ color: '#DDFD51' }}>Quick Actions</h2>
           <div className="flex flex-wrap gap-4">
+            <button
+              onClick={handleOpenScheduleEditor}
+              className="font-bold py-3 px-6 rounded-lg transition-opacity hover:opacity-80 flex items-center gap-2"
+              style={{ backgroundColor: '#DDFD51', color: '#000429' }}
+            >
+              📅 Schedule Editor
+            </button>
             <button
               onClick={handleOpenDeviceAssignment}
               className="font-bold py-3 px-6 rounded-lg transition-opacity hover:opacity-80 flex items-center gap-2"
@@ -352,6 +584,268 @@ function AdminUI() {
                   style={{ backgroundColor: '#DDFD51', color: '#000429' }}
                 >
                   {savingLabel ? 'Saving...' : 'Save Label'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Schedule Editor Panel */}
+        {showScheduleEditor && (
+          <div className="rounded-xl shadow-lg p-6 mb-6" style={{ backgroundColor: '#1a1a3e' }}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-xl font-bold" style={{ color: '#DDFD51' }}>📅 Schedule Editor</h2>
+                <p className="text-sm mt-1" style={{ color: '#9a9ab8' }}>
+                  View, edit, add, and delete scheduled games
+                </p>
+              </div>
+              <button
+                onClick={() => setShowScheduleEditor(false)}
+                className="text-2xl hover:opacity-70 transition-opacity"
+                style={{ color: '#DDFD51' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Court Selector */}
+            <div className="mb-6">
+              <label className="block text-sm font-semibold mb-2" style={{ color: '#DDFD51' }}>
+                Select Court
+              </label>
+              <select
+                value={selectedCourtId || ''}
+                onChange={(e) => handleCourtChange(parseInt(e.target.value))}
+                className="w-full md:w-64 px-4 py-3 rounded-lg text-lg"
+                style={{ 
+                  backgroundColor: '#000429', 
+                  color: '#ffffff',
+                  border: '2px solid #DDFD51'
+                }}
+              >
+                <option value="">-- Choose a court --</option>
+                {courts.map(court => (
+                  <option key={court.id} value={court.id}>
+                    {court.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Error/Success Messages */}
+            {scheduleError && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4">
+                <strong>Error:</strong> {scheduleError}
+              </div>
+            )}
+            {scheduleSuccess && (
+              <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg mb-4">
+                {scheduleSuccess}
+              </div>
+            )}
+
+            {/* Schedule List */}
+            {selectedCourtId && (
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold" style={{ color: '#ffffff' }}>
+                    Games on Court {selectedCourtId}
+                  </h3>
+                  <button
+                    onClick={() => setShowAddGameModal(true)}
+                    className="font-bold py-2 px-4 rounded-lg transition-opacity hover:opacity-80 flex items-center gap-2"
+                    style={{ backgroundColor: '#DDFD51', color: '#000429' }}
+                  >
+                    ➕ Add Game
+                  </button>
+                </div>
+
+                {loadingSchedule ? (
+                  <div className="text-center py-8" style={{ color: '#9a9ab8' }}>
+                    Loading schedule...
+                  </div>
+                ) : scheduleGames.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #DDFD51' }}>
+                          <th className="py-3 px-4 text-left font-bold" style={{ color: '#DDFD51', width: '100px' }}>Time</th>
+                          <th className="py-3 px-4 text-left font-bold" style={{ color: '#DDFD51' }}>Team A</th>
+                          <th className="py-3 px-4 text-left font-bold" style={{ color: '#DDFD51' }}>Team B</th>
+                          <th className="py-3 px-4 text-center font-bold" style={{ color: '#DDFD51', width: '80px' }}>Status</th>
+                          <th className="py-3 px-4 text-center font-bold" style={{ color: '#DDFD51', width: '180px' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {scheduleGames.map((game) => (
+                          <tr key={game.id} style={{ borderBottom: '1px solid #2a2a4e' }}>
+                            <td className="py-3 px-4 font-mono font-semibold" style={{ color: '#DDFD51' }}>
+                              {formatTime(game.time)}
+                            </td>
+                            <td className="py-3 px-4">
+                              <input
+                                type="text"
+                                value={editingGames[game.id]?.teamA || ''}
+                                onChange={(e) => setEditingGames(prev => ({
+                                  ...prev,
+                                  [game.id]: { ...prev[game.id], teamA: e.target.value }
+                                }))}
+                                disabled={game.isCompleted}
+                                className="w-full px-3 py-2 rounded-lg text-sm disabled:opacity-50"
+                                style={{ 
+                                  backgroundColor: '#000429', 
+                                  color: '#ffffff',
+                                  border: '1px solid #DDFD51'
+                                }}
+                              />
+                            </td>
+                            <td className="py-3 px-4">
+                              <input
+                                type="text"
+                                value={editingGames[game.id]?.teamB || ''}
+                                onChange={(e) => setEditingGames(prev => ({
+                                  ...prev,
+                                  [game.id]: { ...prev[game.id], teamB: e.target.value }
+                                }))}
+                                disabled={game.isCompleted}
+                                className="w-full px-3 py-2 rounded-lg text-sm disabled:opacity-50"
+                                style={{ 
+                                  backgroundColor: '#000429', 
+                                  color: '#ffffff',
+                                  border: '1px solid #DDFD51'
+                                }}
+                              />
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              {game.isCompleted ? (
+                                <span className="text-green-400 text-sm">✅ Done</span>
+                              ) : (
+                                <span className="text-yellow-400 text-sm">⏳ Pending</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <div className="flex gap-2 justify-center">
+                                <button
+                                  onClick={() => saveGame(game.id)}
+                                  disabled={savingGameId === game.id || game.isCompleted}
+                                  className="font-bold py-2 px-3 rounded-lg text-sm transition-opacity hover:opacity-80 disabled:opacity-50"
+                                  style={{ backgroundColor: '#DDFD51', color: '#000429' }}
+                                >
+                                  {savingGameId === game.id ? '...' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={() => deleteGame(game.id)}
+                                  disabled={deletingGameId === game.id}
+                                  className="font-bold py-2 px-3 rounded-lg text-sm transition-opacity hover:opacity-80 disabled:opacity-50"
+                                  style={{ backgroundColor: '#ff4444', color: '#ffffff' }}
+                                >
+                                  {deletingGameId === game.id ? '...' : '🗑️'}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8" style={{ color: '#9a9ab8' }}>
+                    No games scheduled for this court. Click "Add Game" to create one.
+                  </div>
+                )}
+              </>
+            )}
+
+            {!selectedCourtId && (
+              <div className="text-center py-8" style={{ color: '#9a9ab8' }}>
+                Select a court to view and edit its schedule
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Add Game Modal */}
+        {showAddGameModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="rounded-2xl shadow-2xl p-8 max-w-md w-full" style={{ backgroundColor: '#1a1a3e' }}>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold" style={{ color: '#DDFD51' }}>
+                  ➕ Add New Game
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowAddGameModal(false);
+                    setNewGameTeamA('');
+                    setNewGameTeamB('');
+                  }}
+                  className="text-2xl hover:opacity-70 transition-opacity"
+                  style={{ color: '#DDFD51' }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="text-sm mb-4" style={{ color: '#9a9ab8' }}>
+                New game will be scheduled 1 hour after the last game on Court {selectedCourtId}
+              </p>
+
+              <div className="mb-4">
+                <label className="block text-sm font-semibold mb-2" style={{ color: '#DDFD51' }}>
+                  Team A
+                </label>
+                <input
+                  type="text"
+                  value={newGameTeamA}
+                  onChange={(e) => setNewGameTeamA(e.target.value)}
+                  placeholder="Enter Team A name..."
+                  className="w-full px-4 py-3 rounded-lg text-lg"
+                  style={{ 
+                    backgroundColor: '#000429', 
+                    color: '#ffffff',
+                    border: '2px solid #DDFD51'
+                  }}
+                  autoFocus
+                />
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-semibold mb-2" style={{ color: '#DDFD51' }}>
+                  Team B
+                </label>
+                <input
+                  type="text"
+                  value={newGameTeamB}
+                  onChange={(e) => setNewGameTeamB(e.target.value)}
+                  placeholder="Enter Team B name..."
+                  className="w-full px-4 py-3 rounded-lg text-lg"
+                  style={{ 
+                    backgroundColor: '#000429', 
+                    color: '#ffffff',
+                    border: '2px solid #DDFD51'
+                  }}
+                />
+              </div>
+
+              <div className="flex gap-4">
+                <button
+                  onClick={() => {
+                    setShowAddGameModal(false);
+                    setNewGameTeamA('');
+                    setNewGameTeamB('');
+                  }}
+                  className="flex-1 py-3 px-6 rounded-lg font-bold transition-opacity hover:opacity-80"
+                  style={{ backgroundColor: '#2a2a4e', color: '#ffffff' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={addGame}
+                  disabled={addingGame || !newGameTeamA.trim() || !newGameTeamB.trim()}
+                  className="flex-1 py-3 px-6 rounded-lg font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
+                  style={{ backgroundColor: '#DDFD51', color: '#000429' }}
+                >
+                  {addingGame ? 'Adding...' : 'Add Game'}
                 </button>
               </div>
             </div>

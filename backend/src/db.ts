@@ -285,3 +285,73 @@ export async function getAllMatchLogs(): Promise<MatchLog[]> {
   return data || [];
 }
 
+// Schedule Editor: Get ALL matches for a court (including completed)
+export async function getAllMatchesForCourt(courtId: number): Promise<Match[]> {
+  const { data, error } = await supabase
+    .from('matches')
+    .select('*')
+    .eq('court_id', courtId)
+    .order('id', { ascending: true });
+  
+  if (error) {
+    console.error('Error fetching all matches for court:', error);
+    return [];
+  }
+  
+  return data || [];
+}
+
+// Schedule Editor: Delete a single match by ID
+export async function deleteMatch(matchId: number): Promise<boolean> {
+  const { error } = await supabase
+    .from('matches')
+    .delete()
+    .eq('id', matchId);
+  
+  if (error) {
+    console.error('Error deleting match:', error);
+    return false;
+  }
+  
+  return true;
+}
+
+// Schedule Editor: Get matches after a specific match (for time shifting)
+export async function getMatchesAfter(courtId: number, afterMatchId: number): Promise<Match[]> {
+  const { data, error } = await supabase
+    .from('matches')
+    .select('*')
+    .eq('court_id', courtId)
+    .gt('id', afterMatchId)
+    .order('id', { ascending: true });
+  
+  if (error) {
+    console.error('Error fetching matches after:', error);
+    return [];
+  }
+  
+  return data || [];
+}
+
+// Schedule Editor: Get the last match for a court (for adding new games)
+export async function getLastMatchForCourt(courtId: number): Promise<Match | null> {
+  const { data, error } = await supabase
+    .from('matches')
+    .select('*')
+    .eq('court_id', courtId)
+    .order('id', { ascending: false })
+    .limit(1)
+    .single();
+  
+  if (error) {
+    if (error.code === 'PGRST116') {
+      // No matches found - not an error
+      return null;
+    }
+    console.error('Error fetching last match:', error);
+    return null;
+  }
+  
+  return data;
+}
+
