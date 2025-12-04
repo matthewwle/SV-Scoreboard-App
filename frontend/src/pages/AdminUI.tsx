@@ -230,6 +230,54 @@ function AdminUI() {
     }
   }
 
+  // Delete/clear device ID for a specific court
+  const [deletingDevice, setDeletingDevice] = useState<number | null>(null);
+  
+  async function deleteDeviceId(courtId: number) {
+    if (!confirm(`Remove device ID from Court ${courtId}?`)) {
+      return;
+    }
+
+    setDeletingDevice(courtId);
+    setDeviceError(null);
+    setDeviceSuccess(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/court/${courtId}/larixDevice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId: '' })  // Empty string to clear
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to remove device ID');
+      }
+
+      setDeviceSuccess(`✅ Device ID removed from Court ${courtId}`);
+      
+      // Update local state
+      setCourtDevices(prev => 
+        prev.map(court => 
+          court.courtId === courtId 
+            ? { ...court, larixDeviceId: null }
+            : court
+        )
+      );
+      
+      // Clear the input field
+      setDeviceInputs(prev => ({
+        ...prev,
+        [courtId]: ''
+      }));
+
+      setTimeout(() => setDeviceSuccess(null), 3000);
+    } catch (err) {
+      setDeviceError(err instanceof Error ? err.message : 'Failed to remove device ID');
+    } finally {
+      setDeletingDevice(null);
+    }
+  }
+
   // Handle opening device assignment panel
   function handleOpenDeviceAssignment() {
     setShowDeviceAssignment(true);
@@ -908,7 +956,8 @@ function AdminUI() {
                       <th className="py-3 px-4 text-left font-bold" style={{ color: '#DDFD51' }}>Court</th>
                       <th className="py-3 px-4 text-left font-bold" style={{ color: '#DDFD51' }}>Device ID</th>
                       <th className="py-3 px-4 text-left font-bold" style={{ color: '#DDFD51' }}>Status</th>
-                      <th className="py-3 px-4 text-center font-bold" style={{ color: '#DDFD51' }}>Action</th>
+                      <th className="py-3 px-4 text-center font-bold" style={{ color: '#DDFD51' }}>Save</th>
+                      <th className="py-3 px-4 text-center font-bold" style={{ color: '#DDFD51' }}>Delete</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -949,6 +998,16 @@ function AdminUI() {
                             style={{ backgroundColor: '#DDFD51', color: '#000429' }}
                           >
                             {savingDevice === court.courtId ? 'Saving...' : 'Save'}
+                          </button>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <button
+                            onClick={() => deleteDeviceId(court.courtId)}
+                            disabled={deletingDevice === court.courtId || !court.larixDeviceId}
+                            className="font-bold py-2 px-4 rounded-lg text-sm transition-opacity hover:opacity-80 disabled:opacity-50"
+                            style={{ backgroundColor: '#ff4444', color: '#ffffff' }}
+                          >
+                            {deletingDevice === court.courtId ? '...' : '🗑️'}
                           </button>
                         </td>
                       </tr>

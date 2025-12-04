@@ -429,25 +429,33 @@ router.get('/admin/testLarix', async (req, res) => {
   }
 });
 
-// Set Larix device ID for a court
+// Set or clear Larix device ID for a court
 router.post('/admin/court/:id/larixDevice', async (req, res) => {
   try {
     const courtId = parseInt(req.params.id);
     const { deviceId } = req.body;
     
-    if (!deviceId || typeof deviceId !== 'string') {
+    // Allow empty string to clear the device ID
+    if (deviceId === undefined || typeof deviceId !== 'string') {
       return res.status(400).json({ error: 'deviceId (string) is required' });
     }
     
-    const court = await updateCourtLarixDeviceId(courtId, deviceId);
+    // If empty string, set to null to clear the device ID
+    const deviceIdToSave = deviceId.trim() === '' ? null : deviceId.trim();
+    
+    const court = await updateCourtLarixDeviceId(courtId, deviceIdToSave);
     
     if (!court) {
       return res.status(404).json({ error: 'Court not found' });
     }
     
+    const message = deviceIdToSave 
+      ? `Larix device ID "${deviceIdToSave}" assigned to Court ${courtId}`
+      : `Larix device ID removed from Court ${courtId}`;
+    
     res.json({
       success: true,
-      message: `Larix device ID "${deviceId}" assigned to Court ${courtId}`,
+      message,
       court
     });
   } catch (error) {
