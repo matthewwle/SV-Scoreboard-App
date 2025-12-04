@@ -67,6 +67,8 @@ export async function getCurrentMatch(courtId: number): Promise<Match | null> {
 }
 
 export async function createMatch(match: Omit<Match, 'id' | 'created_at'>): Promise<Match | null> {
+  console.log('📝 Creating match:', JSON.stringify(match));
+  
   const { data, error } = await supabase
     .from('matches')
     .insert(match)
@@ -74,9 +76,12 @@ export async function createMatch(match: Omit<Match, 'id' | 'created_at'>): Prom
     .single();
   
   if (error) {
-    console.error('Error creating match:', error);
+    console.error('❌ Error creating match:', error);
+    console.error('   Match data was:', JSON.stringify(match));
     return null;
   }
+  
+  console.log('✅ Match created:', data?.id);
   return data;
 }
 

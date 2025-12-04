@@ -470,17 +470,30 @@ function AdminUI() {
   }
 
   // Format time for display
-  function formatTime(isoString: string): string {
-    try {
-      const date = new Date(isoString);
-      return date.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-      });
-    } catch {
-      return isoString;
+  function formatTime(timeString: string): string {
+    if (!timeString) return 'N/A';
+    
+    // If it's already a simple time format like "8:00 AM" or "09:00", return as-is
+    if (/^\d{1,2}:\d{2}(\s*(AM|PM))?$/i.test(timeString.trim())) {
+      return timeString.trim();
     }
+    
+    // Try to parse as ISO date
+    try {
+      const date = new Date(timeString);
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        });
+      }
+    } catch {
+      // Fall through to return original
+    }
+    
+    // Return original string if nothing worked
+    return timeString;
   }
 
   return (
