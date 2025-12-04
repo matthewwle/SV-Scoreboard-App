@@ -626,6 +626,38 @@ router.delete('/schedule/:courtId/:matchId', async (req, res) => {
   }
 });
 
+// Helper function to add 1 hour to a time string
+function addOneHourToTimeString(timeStr: string): string {
+  // Handle formats like "8:00 AM", "10:30 PM", "09:00"
+  const match = timeStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!match) {
+    // If can't parse, just append " +1hr" or return a default
+    return timeStr;
+  }
+  
+  let hours = parseInt(match[1]);
+  const minutes = match[2];
+  const period = match[3]?.toUpperCase();
+  
+  if (period) {
+    // 12-hour format
+    if (period === 'PM' && hours !== 12) hours += 12;
+    if (period === 'AM' && hours === 12) hours = 0;
+    
+    // Add 1 hour
+    hours = (hours + 1) % 24;
+    
+    // Convert back to 12-hour format
+    const newPeriod = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    return `${displayHours}:${minutes} ${newPeriod}`;
+  } else {
+    // 24-hour format
+    hours = (hours + 1) % 24;
+    return `${hours.toString().padStart(2, '0')}:${minutes}`;
+  }
+}
+
 // Add a new game at the end of the schedule
 router.post('/schedule/:courtId/add', async (req, res) => {
   try {
@@ -639,15 +671,13 @@ router.post('/schedule/:courtId/add', async (req, res) => {
     // Get the last match to calculate the new time
     const lastMatch = await getLastMatchForCourt(courtId);
     
-    let newStartTime: Date;
+    let newStartTime: string;
     if (lastMatch && lastMatch.start_time) {
       // Add 1 hour to the last match time
-      newStartTime = new Date(lastMatch.start_time);
-      newStartTime.setHours(newStartTime.getHours() + 1);
+      newStartTime = addOneHourToTimeString(lastMatch.start_time);
     } else {
-      // Default to 8:00 AM today if no matches exist
-      newStartTime = new Date();
-      newStartTime.setHours(8, 0, 0, 0);
+      // Default to 8:00 AM if no matches exist
+      newStartTime = '8:00 AM';
     }
     
     const newMatch = await createMatch({
@@ -656,7 +686,7 @@ router.post('/schedule/:courtId/add', async (req, res) => {
       team_b: teamB.trim(),
       sets_a: 0,
       sets_b: 0,
-      start_time: newStartTime.toISOString(),
+      start_time: newStartTime,
       is_completed: false,
       external_match_id: externalMatchId || null
     });
@@ -665,7 +695,7 @@ router.post('/schedule/:courtId/add', async (req, res) => {
       return res.status(500).json({ error: 'Failed to create match' });
     }
     
-    console.log(`➕ Schedule: Added new match on Court ${courtId} - ${teamA} vs ${teamB} at ${newStartTime.toISOString()}`);
+    console.log(`➕ Schedule: Added new match on Court ${courtId} - ${teamA} vs ${teamB} at ${newStartTime}`);
     
     res.json({
       success: true,
