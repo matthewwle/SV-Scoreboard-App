@@ -680,6 +680,8 @@ router.post('/schedule/:courtId/add', async (req, res) => {
       newStartTime = '8:00 AM';
     }
     
+    console.log(`➕ Attempting to add match on Court ${courtId}: ${teamA} vs ${teamB} at ${newStartTime}`);
+    
     const newMatch = await createMatch({
       court_id: courtId,
       team_a: teamA.trim(),
@@ -687,15 +689,16 @@ router.post('/schedule/:courtId/add', async (req, res) => {
       sets_a: 0,
       sets_b: 0,
       start_time: newStartTime,
-      is_completed: false,
-      external_match_id: externalMatchId || null
+      is_completed: false
+      // Note: external_match_id removed - column may not exist in database
     });
     
     if (!newMatch) {
-      return res.status(500).json({ error: 'Failed to create match' });
+      console.error(`❌ Failed to create match on Court ${courtId}`);
+      return res.status(500).json({ error: 'Failed to create match - check database logs' });
     }
     
-    console.log(`➕ Schedule: Added new match on Court ${courtId} - ${teamA} vs ${teamB} at ${newStartTime}`);
+    console.log(`✅ Schedule: Added new match on Court ${courtId} - ${teamA} vs ${teamB} at ${newStartTime}`);
     
     res.json({
       success: true,
