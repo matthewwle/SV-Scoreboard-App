@@ -189,6 +189,51 @@ export async function deleteMatchesForCourt(courtId: number): Promise<void> {
   }
 }
 
+// Delete ALL matches from the database
+export async function deleteAllMatches(): Promise<void> {
+  // First, clear all current_match_id references in courts
+  const { error: courtsError } = await supabase
+    .from('courts')
+    .update({ current_match_id: null })
+    .neq('id', 0); // Update all courts
+  
+  if (courtsError) {
+    console.error('Error resetting courts:', courtsError);
+  }
+  
+  // Delete all score states
+  const { error: scoresError } = await supabase
+    .from('score_states')
+    .delete()
+    .neq('id', 0); // Delete all
+  
+  if (scoresError) {
+    console.error('Error deleting score states:', scoresError);
+  }
+  
+  // Delete all match logs
+  const { error: logsError } = await supabase
+    .from('match_logs')
+    .delete()
+    .neq('id', 0); // Delete all
+  
+  if (logsError) {
+    console.error('Error deleting match logs:', logsError);
+  }
+  
+  // Delete all matches
+  const { error: matchesError } = await supabase
+    .from('matches')
+    .delete()
+    .neq('id', 0); // Delete all
+  
+  if (matchesError) {
+    console.error('Error deleting matches:', matchesError);
+  }
+  
+  console.log('🗑️ All matches, score states, and logs cleared');
+}
+
 // Get upcoming matches for a court (not completed, ordered by id ascending)
 export async function getUpcomingMatches(courtId: number, limit: number = 5): Promise<Match[]> {
   const { data, error} = await supabase
