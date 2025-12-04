@@ -55,7 +55,8 @@ async function buildScorePayload(courtId: number, match: Match, scoreState: Scor
     setNumber: scoreState.set_number,
     setHistory,
     updatedAt: new Date().toISOString(),
-    pendingSetWin: pendingSetWin || null
+    pendingSetWin: pendingSetWin || null,
+    isCrossover: match.is_crossover || false
   };
 }
 
@@ -141,8 +142,12 @@ export async function confirmSetWin(courtId: number): Promise<ScoreUpdatePayload
     match.sets_b += 1;
   }
   
-  // Check if match is complete (best of 3, first to 2)
-  if (match.sets_a >= 2 || match.sets_b >= 2) {
+  // Check if match is complete
+  // Crossover match: 1 set only (first to win 1 set)
+  // Regular match: Best of 3 (first to win 2 sets)
+  const setsToWin = match.is_crossover ? 1 : 2;
+  
+  if (match.sets_a >= setsToWin || match.sets_b >= setsToWin) {
     match.is_completed = true;
     
     // 🆕 LOG MATCH END - Update the match log with end time

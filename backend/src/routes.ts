@@ -368,6 +368,9 @@ router.post('/admin/uploadSchedule', upload.single('file'), async (req, res) => 
     const createdMatches = [];
     
     for (const row of rows) {
+      // Check if this is a crossover match (1 set only)
+      const isCrossover = row.Crossover?.toUpperCase() === 'Y';
+      
       const match = await createMatch({
         court_id: row.Court,
         team_a: row.TeamA,
@@ -376,7 +379,8 @@ router.post('/admin/uploadSchedule', upload.single('file'), async (req, res) => 
         sets_b: 0,
         start_time: row.StartTime,
         is_completed: false,
-        external_match_id: row.MatchID || null  // Store MatchID from spreadsheet
+        external_match_id: row.MatchID || null,
+        is_crossover: isCrossover  // Crossover = 1 set only
       });
       
       if (match) {

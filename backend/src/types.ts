@@ -17,6 +17,7 @@ export interface Match {
   start_time: string;
   is_completed: boolean;
   external_match_id?: string | null;  // MatchID from spreadsheet
+  is_crossover?: boolean;  // Crossover match = 1 set only (Y/N in CSV)
   created_at?: string;
 }
 
@@ -60,6 +61,7 @@ export interface ScoreUpdatePayload {
   setHistory: SetScore[];
   updatedAt: string;
   pendingSetWin?: 'A' | 'B' | null;  // Track if a set win is pending confirmation
+  isCrossover?: boolean;  // Crossover match = 1 set only
 }
 
 // API Request/Response Types
@@ -87,5 +89,6 @@ export interface UploadScheduleRow {
   TeamA: string;
   TeamB: string;
   MatchID?: string;
+  Crossover?: string;  // 'Y' for crossover (1 set), 'N' or empty for regular (best of 3)
 }
 
