@@ -189,15 +189,14 @@ export async function deleteMatchesForCourt(courtId: number): Promise<void> {
   }
 }
 
-// Get upcoming matches for a court (not completed, ordered by start_time then id)
+// Get upcoming matches for a court (not completed, ordered by id ascending)
 export async function getUpcomingMatches(courtId: number, limit: number = 5): Promise<Match[]> {
   const { data, error} = await supabase
     .from('matches')
     .select('*')
     .eq('court_id', courtId)
     .eq('is_completed', false)
-    .order('start_time', { ascending: true })  // Order by scheduled time first
-    .order('id', { ascending: true })           // Then by ID as tiebreaker
+    .order('id', { ascending: true })  // Order by ID (matches uploaded first = played first)
     .limit(limit);
   
   if (error) {
@@ -297,8 +296,7 @@ export async function getAllMatchesForCourt(courtId: number): Promise<Match[]> {
     .from('matches')
     .select('*')
     .eq('court_id', courtId)
-    .order('start_time', { ascending: true })  // Order by scheduled time
-    .order('id', { ascending: true });          // Then by ID as tiebreaker
+    .order('id', { ascending: true });  // Order by ID (upload order)
   
   if (error) {
     console.error('Error fetching all matches for court:', error);
