@@ -17,6 +17,7 @@ export interface ScoreUpdatePayload {
   setHistory: SetScore[];
   updatedAt: string;
   pendingSetWin?: 'A' | 'B' | null;
+  isCrossover?: boolean;  // Crossover match = 1 set only
 }
 
 export interface Court {
@@ -34,5 +35,6 @@ export interface Match {
   sets_b: number;
   start_time: string;
   is_completed: boolean;
+  is_crossover?: boolean;  // Crossover match = 1 set only
 }
 

@@ -45,8 +45,11 @@ function ControlUI() {
   }
 
   // Check if current match is complete
+  // Crossover matches: 1 set to win
+  // Regular matches: 2 sets to win (best of 3)
+  const setsToWin = scoreState?.isCrossover ? 1 : 2;
   const isMatchComplete = currentMatch?.is_completed || 
-    (scoreState && (scoreState.setsA >= 2 || scoreState.setsB >= 2));
+    (scoreState && (scoreState.setsA >= setsToWin || scoreState.setsB >= setsToWin));
 
   // Show modal when a set is won
   useEffect(() => {
