@@ -145,7 +145,9 @@ export async function confirmSetWin(courtId: number): Promise<ScoreUpdatePayload
   // Check if match is complete
   // Crossover match: 1 set only (first to win 1 set)
   // Regular match: Best of 3 (first to win 2 sets)
-  const setsToWin = match.is_crossover ? 1 : 2;
+  console.log(`🏐 Match ${match.id} - is_crossover: ${match.is_crossover} (type: ${typeof match.is_crossover})`);
+  const setsToWin = match.is_crossover === true ? 1 : 2;
+  console.log(`🏐 Sets to win: ${setsToWin}, Current: A=${match.sets_a}, B=${match.sets_b}`);
   
   if (match.sets_a >= setsToWin || match.sets_b >= setsToWin) {
     match.is_completed = true;
