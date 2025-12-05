@@ -23,7 +23,9 @@ interface WebhookResponse {
  */
 export async function sendMatchStartWebhook(
   courtId: number,
-  externalMatchId: string | null | undefined
+  externalMatchId: string | null | undefined,
+  teamA: string,
+  teamB: string
 ): Promise<WebhookResponse> {
   const time = new Date().toISOString();
   
@@ -35,7 +37,9 @@ export async function sendMatchStartWebhook(
       Time: time,
       Event: 'Start',
       MatchID: externalMatchId || 'N/A',  // Use spreadsheet MatchID
-      TournamentID: currentTournamentLabel
+      TournamentID: currentTournamentLabel,
+      teamName1: teamA,
+      teamName2: teamB
     };
     
     await axios.post(WEBHOOK_URL, payload, {
@@ -57,7 +61,9 @@ export async function sendMatchStartWebhook(
  */
 export async function sendMatchEndWebhook(
   courtId: number,
-  externalMatchId: string | null | undefined
+  externalMatchId: string | null | undefined,
+  teamA: string,
+  teamB: string
 ): Promise<WebhookResponse> {
   const time = new Date().toISOString();
   
@@ -69,7 +75,9 @@ export async function sendMatchEndWebhook(
       Time: time,
       Event: 'Stop',
       MatchID: externalMatchId || 'N/A',  // Use spreadsheet MatchID
-      TournamentID: currentTournamentLabel
+      TournamentID: currentTournamentLabel,
+      teamName1: teamA,
+      teamName2: teamB
     };
     
     await axios.post(WEBHOOK_URL, payload, {

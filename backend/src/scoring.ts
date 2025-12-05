@@ -157,7 +157,7 @@ export async function confirmSetWin(courtId: number): Promise<ScoreUpdatePayload
     
     // 🔔 SEND MATCH END WEBHOOK
     const { sendMatchEndWebhook } = await import('./webhookClient');
-    await sendMatchEndWebhook(courtId, match.external_match_id);
+    await sendMatchEndWebhook(courtId, match.external_match_id, match.team_a, match.team_b);
   }
   
   await updateMatch(match.id, {
