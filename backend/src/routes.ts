@@ -513,6 +513,143 @@ router.post('/settings/tournamentLabel', async (req, res) => {
 });
 
 // =====================================================
+// SPORTWRENCH SETTINGS
+// =====================================================
+
+// Get SportWrench Event ID
+router.get('/settings/sportwrenchEventId', async (req, res) => {
+  const { getSportWrenchEventId } = await import('./sportwrenchSync');
+  res.json({ eventId: getSportWrenchEventId() });
+});
+
+// Set SportWrench Event ID (5-digit tournament ID)
+router.post('/settings/sportwrenchEventId', async (req, res) => {
+  const { eventId } = req.body;
+  
+  // Allow empty string or null to clear the event ID
+  const eventIdToSave = eventId?.trim() || null;
+  
+  // Validate format if provided (should be 5 digits)
+  if (eventIdToSave && !/^\d{5}$/.test(eventIdToSave)) {
+    return res.status(400).json({ 
+      error: 'Event ID must be a 5-digit number (e.g., 12345)' 
+    });
+  }
+  
+  const { setSportWrenchEventId, restartSportWrenchSync } = await import('./sportwrenchSync');
+  setSportWrenchEventId(eventIdToSave);
+  
+  // Restart sync with new settings
+  restartSportWrenchSync();
+  
+  console.log(`🏐 SportWrench Event ID updated to: "${eventIdToSave || '(none)'}"`);
+  
+  res.json({ 
+    success: true, 
+    eventId: eventIdToSave,
+    message: eventIdToSave 
+      ? `SportWrench Event ID set to "${eventIdToSave}". Sync will run every 5 minutes.`
+      : 'SportWrench Event ID cleared. Sync disabled.'
+  });
+});
+
+// Manually trigger a SportWrench sync
+router.post('/settings/sportwrenchSync', async (req, res) => {
+  const { triggerManualSync, getSportWrenchEventId } = await import('./sportwrenchSync');
+  
+  if (!getSportWrenchEventId()) {
+    return res.status(400).json({ 
+      error: 'SportWrench Event ID not configured. Set it first in Admin Panel.' 
+    });
+  }
+  
+  console.log('🔄 Manual SportWrench sync triggered...');
+  const result = await triggerManualSync();
+  
+  res.json(result);
+});
+
+// Get SportWrench sync status
+router.get('/settings/sportwrenchStatus', async (req, res) => {
+  const { getSportWrenchEventId } = await import('./sportwrenchSync');
+  const eventId = getSportWrenchEventId();
+  
+  res.json({
+    configured: !!eventId,
+    eventId: eventId,
+    syncIntervalMinutes: 5,
+    apiUrl: eventId 
+      ? `https://my.sportwrench.com/api/tpc/export/${eventId}/schedule`
+      : null
+  });
+});
+
+// Test SportWrench API connection (diagnostic endpoint)
+router.get('/settings/sportwrenchTest', async (req, res) => {
+  const eventId = req.query.eventId as string || '24724';
+  const apiUrl = `https://my.sportwrench.com/api/tpc/export/${eventId}/schedule`;
+  
+  console.log(`🧪 Testing SportWrench API connection: ${apiUrl}`);
+  
+  try {
+    const axios = (await import('axios')).default;
+    const startTime = Date.now();
+    
+    const response = await axios.get(apiUrl, {
+      timeout: 30000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; ScoreboardSync/1.0)',
+        'Accept': 'application/json'
+      }
+    });
+    
+    const duration = Date.now() - startTime;
+    const isJsonArray = Array.isArray(response.data);
+    const matchCount = isJsonArray ? response.data.length : 0;
+    
+    // Get sample match_id values
+    const sampleMatchIds = isJsonArray 
+      ? response.data.slice(0, 3).map((m: any) => m.match_id)
+      : [];
+    
+    console.log(`✅ SportWrench API test SUCCESS: ${matchCount} matches in ${duration}ms`);
+    
+    res.json({
+      success: true,
+      apiUrl,
+      statusCode: response.status,
+      duration: `${duration}ms`,
+      matchCount,
+      isValidResponse: isJsonArray,
+      sampleMatchIds,
+      message: `Successfully fetched ${matchCount} matches from SportWrench`
+    });
+  } catch (error: any) {
+    const duration = Date.now();
+    
+    // Check if it's a Cloudflare block
+    const isCloudflareBlock = error.response?.data?.includes?.('Just a moment') ||
+                              error.response?.data?.includes?.('Enable JavaScript');
+    
+    console.error(`❌ SportWrench API test FAILED:`, error.message);
+    
+    res.json({
+      success: false,
+      apiUrl,
+      statusCode: error.response?.status || null,
+      error: error.message,
+      isCloudflareBlock,
+      responsePreview: typeof error.response?.data === 'string' 
+        ? error.response.data.substring(0, 200) 
+        : null,
+      suggestion: isCloudflareBlock 
+        ? 'Cloudflare is blocking requests. Contact SportWrench to whitelist your server IP.'
+        : 'Check network connectivity and API URL.'
+    });
+  }
+});
+
+// =====================================================
 // SCHEDULE EDITOR APIs
 // =====================================================
 

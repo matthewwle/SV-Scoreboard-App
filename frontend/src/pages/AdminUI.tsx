@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { API_URL } from '../config';
 
 interface MatchLog {
@@ -74,6 +74,41 @@ function AdminUI() {
   const [newGameTeamA, setNewGameTeamA] = useState('');
   const [newGameTeamB, setNewGameTeamB] = useState('');
   const [addingGame, setAddingGame] = useState(false);
+
+  // SportWrench settings state
+  const [showSportWrenchSettings, setShowSportWrenchSettings] = useState(false);
+  const [sportWrenchEventId, setSportWrenchEventId] = useState<string>('');
+  const [sportWrenchInput, setSportWrenchInput] = useState<string>('');
+  const [savingSportWrench, setSavingSportWrench] = useState(false);
+  const [sportWrenchSuccess, setSportWrenchSuccess] = useState<string | null>(null);
+  const [sportWrenchError, setSportWrenchError] = useState<string | null>(null);
+  const [syncingSportWrench, setSyncingSportWrench] = useState(false);
+  const [lastSyncResult, setLastSyncResult] = useState<string | null>(null);
+
+  // Load settings on mount
+  useEffect(() => {
+    // Load tournament label
+    async function loadSettings() {
+      try {
+        // Load tournament label
+        const labelResponse = await fetch(`${API_URL}/api/settings/tournamentLabel`);
+        if (labelResponse.ok) {
+          const data = await labelResponse.json();
+          setTournamentLabel(data.label || 'Winter Formal');
+        }
+        
+        // Load SportWrench Event ID
+        const swResponse = await fetch(`${API_URL}/api/settings/sportwrenchEventId`);
+        if (swResponse.ok) {
+          const data = await swResponse.json();
+          setSportWrenchEventId(data.eventId || '');
+        }
+      } catch (err) {
+        console.error('Failed to load settings:', err);
+      }
+    }
+    loadSettings();
+  }, []);
 
   async function handleUpload() {
     if (!file) {
@@ -337,6 +372,95 @@ function AdminUI() {
   }
 
   // ==========================================
+  // SPORTWRENCH FUNCTIONS
+  // ==========================================
+
+  // Load SportWrench Event ID from API
+  async function loadSportWrenchEventId() {
+    try {
+      const response = await fetch(`${API_URL}/api/settings/sportwrenchEventId`);
+      if (response.ok) {
+        const data = await response.json();
+        setSportWrenchEventId(data.eventId || '');
+        setSportWrenchInput(data.eventId || '');
+      }
+    } catch (err) {
+      console.error('Failed to load SportWrench Event ID:', err);
+    }
+  }
+
+  // Save SportWrench Event ID
+  async function saveSportWrenchEventId() {
+    setSavingSportWrench(true);
+    setSportWrenchSuccess(null);
+    setSportWrenchError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/settings/sportwrenchEventId`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId: sportWrenchInput.trim() })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to save');
+      }
+
+      setSportWrenchEventId(sportWrenchInput.trim());
+      setSportWrenchSuccess(data.message || '✅ Event ID saved!');
+      
+      setTimeout(() => setSportWrenchSuccess(null), 5000);
+    } catch (err) {
+      setSportWrenchError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSavingSportWrench(false);
+    }
+  }
+
+  // Manually trigger SportWrench sync
+  async function triggerSportWrenchSync() {
+    setSyncingSportWrench(true);
+    setLastSyncResult(null);
+    setSportWrenchError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/settings/sportwrenchSync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Sync failed');
+      }
+
+      setLastSyncResult(
+        data.matchesUpdated > 0 
+          ? `✅ Updated ${data.matchesUpdated} match${data.matchesUpdated > 1 ? 'es' : ''}`
+          : '✅ No changes detected'
+      );
+      
+      setTimeout(() => setLastSyncResult(null), 5000);
+    } catch (err) {
+      setSportWrenchError(err instanceof Error ? err.message : 'Sync failed');
+    } finally {
+      setSyncingSportWrench(false);
+    }
+  }
+
+  // Handle opening SportWrench settings
+  function handleOpenSportWrenchSettings() {
+    loadSportWrenchEventId();
+    setShowSportWrenchSettings(true);
+    setSportWrenchSuccess(null);
+    setSportWrenchError(null);
+    setLastSyncResult(null);
+  }
+
+  // ==========================================
   // SCHEDULE EDITOR FUNCTIONS
   // ==========================================
 
@@ -578,9 +702,21 @@ function AdminUI() {
             >
               🏷️ Edit Tournament Label
             </button>
+            <button
+              onClick={handleOpenSportWrenchSettings}
+              className="font-bold py-3 px-6 rounded-lg transition-opacity hover:opacity-80 flex items-center gap-2"
+              style={{ backgroundColor: '#DDFD51', color: '#000429' }}
+            >
+              🏐 SportWrench Sync
+            </button>
           </div>
           <div className="mt-3 text-sm" style={{ color: '#9a9ab8' }}>
             Current label: <span style={{ color: '#DDFD51' }}>"{tournamentLabel}"</span>
+            {sportWrenchEventId && (
+              <span className="ml-4">
+                SportWrench Event: <span style={{ color: '#DDFD51' }}>{sportWrenchEventId}</span>
+              </span>
+            )}
           </div>
         </div>
 
@@ -648,6 +784,134 @@ function AdminUI() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* SportWrench Settings Panel */}
+        {showSportWrenchSettings && (
+          <div className="rounded-xl shadow-lg p-6 mb-6" style={{ backgroundColor: '#1a1a3e' }}>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-xl font-bold" style={{ color: '#DDFD51' }}>🏐 SportWrench Sync Settings</h2>
+                <p className="text-sm mt-1" style={{ color: '#9a9ab8' }}>
+                  Automatically sync team names from SportWrench every 5 minutes
+                </p>
+              </div>
+              <button
+                onClick={() => setShowSportWrenchSettings(false)}
+                className="text-2xl hover:opacity-70 transition-opacity"
+                style={{ color: '#DDFD51' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Error Message */}
+            {sportWrenchError && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4">
+                <strong>Error:</strong> {sportWrenchError}
+              </div>
+            )}
+
+            {/* Success Message */}
+            {sportWrenchSuccess && (
+              <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg mb-4">
+                {sportWrenchSuccess}
+              </div>
+            )}
+
+            {/* Sync Result */}
+            {lastSyncResult && (
+              <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded-lg mb-4">
+                {lastSyncResult}
+              </div>
+            )}
+
+            {/* Event ID Input */}
+            <div className="mb-6">
+              <label className="block text-sm font-semibold mb-2" style={{ color: '#DDFD51' }}>
+                SportWrench Event ID (5-digit)
+              </label>
+              <div className="flex gap-4">
+                <input
+                  type="text"
+                  value={sportWrenchInput}
+                  onChange={(e) => setSportWrenchInput(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                  placeholder="e.g., 12345"
+                  maxLength={5}
+                  className="flex-1 px-4 py-3 rounded-lg text-lg font-mono"
+                  style={{ 
+                    backgroundColor: '#000429', 
+                    color: '#ffffff',
+                    border: '2px solid #DDFD51'
+                  }}
+                />
+                <button
+                  onClick={saveSportWrenchEventId}
+                  disabled={savingSportWrench}
+                  className="py-3 px-6 rounded-lg font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
+                  style={{ backgroundColor: '#DDFD51', color: '#000429' }}
+                >
+                  {savingSportWrench ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+              <p className="text-xs mt-2" style={{ color: '#9a9ab8' }}>
+                Get this ID from SportWrench for your tournament
+              </p>
+            </div>
+
+            {/* Current Status */}
+            <div className="p-4 rounded-lg mb-6" style={{ backgroundColor: '#000429' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold" style={{ color: '#DDFD51' }}>Current Status</div>
+                  <div className="text-sm mt-1" style={{ color: '#9a9ab8' }}>
+                    {sportWrenchEventId ? (
+                      <>
+                        <span className="text-green-400">● Active</span>
+                        <span className="ml-2">- Syncing event {sportWrenchEventId} every 5 minutes</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-yellow-400">● Inactive</span>
+                        <span className="ml-2">- Enter an Event ID to enable sync</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {sportWrenchEventId && (
+                  <button
+                    onClick={triggerSportWrenchSync}
+                    disabled={syncingSportWrench}
+                    className="py-2 px-4 rounded-lg font-bold text-sm transition-opacity hover:opacity-80 disabled:opacity-50"
+                    style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}
+                  >
+                    {syncingSportWrench ? '🔄 Syncing...' : '🔄 Sync Now'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* How It Works */}
+            <div className="p-4 rounded-lg" style={{ backgroundColor: '#000429' }}>
+              <div className="text-sm font-semibold mb-2" style={{ color: '#DDFD51' }}>💡 How It Works</div>
+              <ul className="text-sm space-y-2" style={{ color: '#9a9ab8' }}>
+                <li>1. Upload your schedule CSV with <strong>MatchID</strong> column</li>
+                <li>2. Enter the SportWrench 5-digit Event ID above</li>
+                <li>3. Team names will auto-update every 5 minutes</li>
+                <li>4. MatchIDs from CSV are matched to SportWrench match_id field</li>
+              </ul>
+            </div>
+
+            {/* API Info */}
+            {sportWrenchEventId && (
+              <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: '#000429' }}>
+                <div className="text-sm font-semibold mb-2" style={{ color: '#DDFD51' }}>🔗 API Endpoint</div>
+                <code className="text-xs break-all" style={{ color: '#9a9ab8' }}>
+                  https://my.sportwrench.com/api/tpc/export/{sportWrenchEventId}/schedule
+                </code>
+              </div>
+            )}
           </div>
         )}
 

@@ -7,6 +7,7 @@ import routes from './routes';
 import { connectRedis, getCachedScoreState } from './redis';
 import { initializeCourts } from './db';
 import { getCurrentScoreState, setSocketIO } from './scoring';
+import { startSportWrenchSync } from './sportwrenchSync';
 
 dotenv.config();
 
@@ -131,10 +132,15 @@ async function startServer() {
     // Initialize courts in database
     await initializeCourts(70);
 
+    // Start SportWrench sync service (will only sync if Event ID is configured)
+    // The sync service polls every 5 minutes and updates team names from SportWrench
+    startSportWrenchSync(io);
+
     // Start HTTP server
     httpServer.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`WebSocket server ready`);
+      console.log(`SportWrench sync service initialized (configure Event ID via Admin Panel)`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
