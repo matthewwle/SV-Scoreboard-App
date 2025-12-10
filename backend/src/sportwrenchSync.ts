@@ -304,3 +304,178 @@ export function restartSportWrenchSync(): void {
   }
 }
 
+/**
+ * Import matches from SportWrench into the database
+ * Creates new matches with data from SportWrench API
+ * Handles multi-day tournaments by sorting Day 1 before Day 2, etc.
+ */
+export async function importFromSportWrench(
+  eventId: string,
+  courtFilter?: { min: number; max: number }
+): Promise<{
+  success: boolean;
+  imported: number;
+  updated: number;
+  errors: string[];
+  dayStats: Record<number, number>;
+}> {
+  const apiUrl = `https://my.sportwrench.com/api/tpc/export/${eventId}/schedule`;
+  
+  console.log(`📥 Importing matches from SportWrench event ${eventId}...`);
+  
+  try {
+    const response = await axios.get(apiUrl, { timeout: 30000 });
+    let swMatches: SportWrenchMatch[] = response.data || [];
+    
+    console.log(`📊 Fetched ${swMatches.length} total matches from SportWrench`);
+    
+    // Filter by court if specified
+    if (courtFilter) {
+      swMatches = swMatches.filter(
+        m => m.court >= courtFilter.min && m.court <= courtFilter.max
+      );
+      console.log(`🔍 Filtered to ${swMatches.length} matches for courts ${courtFilter.min}-${courtFilter.max}`);
+    }
+    
+    // Sort by day first, then by date_time (ensures Day 1 matches come before Day 2)
+    swMatches.sort((a, b) => {
+      // Primary: sort by day
+      if (a.day !== b.day) {
+        return a.day - b.day;
+      }
+      // Secondary: sort by date_time
+      return new Date(a.date_time).getTime() - new Date(b.date_time).getTime();
+    });
+    
+    // Group matches by court for ordered insertion
+    const matchesByCourt = new Map<number, SportWrenchMatch[]>();
+    for (const match of swMatches) {
+      if (!matchesByCourt.has(match.court)) {
+        matchesByCourt.set(match.court, []);
+      }
+      matchesByCourt.get(match.court)!.push(match);
+    }
+    
+    let imported = 0;
+    let updated = 0;
+    const errors: string[] = [];
+    
+    // Process each court's matches in order
+    for (const [courtId, matches] of matchesByCourt) {
+      const daysOnCourt = new Set(matches.map(m => m.day)).size;
+      console.log(`📋 Court ${courtId}: ${matches.length} matches across ${daysOnCourt} day(s)`);
+      
+      for (const swMatch of matches) {
+        try {
+          // Check if match already exists (by external_match_id)
+          const { data: existing } = await supabase
+            .from('matches')
+            .select('id')
+            .eq('external_match_id', swMatch.match_id)
+            .maybeSingle();
+          
+          if (existing) {
+            // Update existing match with latest team names
+            const { error } = await supabase
+              .from('matches')
+              .update({
+                team_a: swMatch.team_1_name,
+                team_b: swMatch.team_2_name,
+                start_time: swMatch.date_time,
+                court_id: swMatch.court
+              })
+              .eq('id', existing.id);
+            
+            if (error) throw error;
+            updated++;
+          } else {
+            // Create new match
+            const { error } = await supabase
+              .from('matches')
+              .insert({
+                court_id: swMatch.court,
+                team_a: swMatch.team_1_name,
+                team_b: swMatch.team_2_name,
+                start_time: swMatch.date_time,
+                external_match_id: swMatch.match_id,
+                is_crossover: false, // Default, will be set by CSV upload
+                is_completed: false,
+                score_a: 0,
+                score_b: 0,
+                current_set: 1,
+                set_scores: []
+              });
+            
+            if (error) throw error;
+            imported++;
+          }
+        } catch (err: any) {
+          errors.push(`Match ${swMatch.match_id}: ${err.message}`);
+        }
+      }
+    }
+    
+    // Calculate day distribution stats
+    const dayStats = swMatches.reduce((acc, m) => {
+      acc[m.day] = (acc[m.day] || 0) + 1;
+      return acc;
+    }, {} as Record<number, number>);
+    
+    console.log(`📅 Day distribution:`, dayStats);
+    console.log(`✅ Import complete: ${imported} new, ${updated} updated, ${errors.length} errors`);
+    
+    return { success: true, imported, updated, errors, dayStats };
+  } catch (error: any) {
+    console.error('❌ Failed to import from SportWrench:', error.message);
+    return {
+      success: false,
+      imported: 0,
+      updated: 0,
+      errors: [error.message],
+      dayStats: {}
+    };
+  }
+}
+
+/**
+ * Update crossover status for matches by external_match_id
+ */
+export async function updateCrossoverMappings(
+  mappings: Array<{ matchId: string; isCrossover: boolean }>
+): Promise<{ updated: number; notFound: number; errors: string[] }> {
+  let updated = 0;
+  let notFound = 0;
+  const errors: string[] = [];
+  
+  for (const mapping of mappings) {
+    const { matchId, isCrossover } = mapping;
+    
+    if (!matchId) continue;
+    
+    try {
+      const { data, error } = await supabase
+        .from('matches')
+        .update({ is_crossover: !!isCrossover })
+        .eq('external_match_id', matchId)
+        .select('id');
+      
+      if (error) {
+        errors.push(`${matchId}: ${error.message}`);
+        continue;
+      }
+      
+      if (data && data.length > 0) {
+        updated++;
+      } else {
+        notFound++;
+      }
+    } catch (err: any) {
+      errors.push(`${matchId}: ${err.message}`);
+    }
+  }
+  
+  console.log(`📋 Crossover mapping: ${updated} updated, ${notFound} not found, ${errors.length} errors`);
+  
+  return { updated, notFound, errors };
+}
+

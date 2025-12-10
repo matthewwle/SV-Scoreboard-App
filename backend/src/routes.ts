@@ -649,6 +649,67 @@ router.get('/settings/sportwrenchTest', async (req, res) => {
   }
 });
 
+// Import matches from SportWrench (creates matches in database)
+router.post('/schedule/import-from-sportwrench', async (req, res) => {
+  const { eventId, courtMin, courtMax } = req.body;
+  
+  if (!eventId) {
+    return res.status(400).json({ error: 'Event ID is required' });
+  }
+  
+  // Validate event ID format
+  if (!/^\d{5}$/.test(eventId)) {
+    return res.status(400).json({ error: 'Event ID must be a 5-digit number' });
+  }
+  
+  const { importFromSportWrench } = await import('./sportwrenchSync');
+  
+  const courtFilter = (courtMin !== undefined && courtMax !== undefined)
+    ? { min: parseInt(courtMin), max: parseInt(courtMax) }
+    : undefined;
+  
+  console.log(`📥 Import request: Event ${eventId}, Courts: ${courtFilter ? `${courtFilter.min}-${courtFilter.max}` : 'all'}`);
+  
+  const result = await importFromSportWrench(eventId, courtFilter);
+  
+  res.json({
+    success: result.success,
+    message: result.success
+      ? `Imported ${result.imported} new matches, updated ${result.updated} existing`
+      : 'Import failed',
+    imported: result.imported,
+    updated: result.updated,
+    dayStats: result.dayStats,
+    errors: result.errors.slice(0, 10) // Limit error output
+  });
+});
+
+// Upload CSV for crossover mapping (MatchID, IsCrossover)
+router.post('/schedule/upload-crossover-mapping', async (req, res) => {
+  try {
+    const { mappings } = req.body;
+    // mappings = [{ matchId: "24724_14 O_R1P5M6", isCrossover: true }, ...]
+    
+    if (!Array.isArray(mappings)) {
+      return res.status(400).json({ error: 'mappings array is required' });
+    }
+    
+    const { updateCrossoverMappings } = await import('./sportwrenchSync');
+    const result = await updateCrossoverMappings(mappings);
+    
+    res.json({
+      success: true,
+      message: `Updated ${result.updated} matches, ${result.notFound} not found`,
+      updated: result.updated,
+      notFound: result.notFound,
+      errors: result.errors.slice(0, 10)
+    });
+  } catch (error: any) {
+    console.error('Crossover mapping error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // =====================================================
 // SCHEDULE EDITOR APIs
 // =====================================================

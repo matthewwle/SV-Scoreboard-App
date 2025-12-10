@@ -85,6 +85,17 @@ function AdminUI() {
   const [syncingSportWrench, setSyncingSportWrench] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState<string | null>(null);
 
+  // SportWrench import state
+  const [importing, setImporting] = useState(false);
+  const [importCourtMin, setImportCourtMin] = useState<string>('1');
+  const [importCourtMax, setImportCourtMax] = useState<string>('70');
+  const [importResult, setImportResult] = useState<string | null>(null);
+
+  // Crossover CSV upload state
+  const [crossoverFile, setCrossoverFile] = useState<File | null>(null);
+  const [uploadingCrossover, setUploadingCrossover] = useState(false);
+  const [crossoverResult, setCrossoverResult] = useState<string | null>(null);
+
   // Load settings on mount
   useEffect(() => {
     // Load tournament label
@@ -458,6 +469,109 @@ function AdminUI() {
     setSportWrenchSuccess(null);
     setSportWrenchError(null);
     setLastSyncResult(null);
+    setImportResult(null);
+    setCrossoverResult(null);
+  }
+
+  // Import matches from SportWrench
+  async function importFromSportWrench() {
+    if (!sportWrenchEventId) {
+      setSportWrenchError('Please save an Event ID first');
+      return;
+    }
+
+    setImporting(true);
+    setImportResult(null);
+    setSportWrenchError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/schedule/import-from-sportwrench`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: sportWrenchEventId,
+          courtMin: importCourtMin,
+          courtMax: importCourtMax
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        const dayInfo = data.dayStats 
+          ? ` (${Object.entries(data.dayStats).map(([day, count]) => `Day ${day}: ${count}`).join(', ')})`
+          : '';
+        setImportResult(`✅ ${data.message}${dayInfo}`);
+      } else {
+        setSportWrenchError(data.error || 'Import failed');
+      }
+    } catch (err) {
+      setSportWrenchError(err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  // Upload crossover CSV mapping
+  async function uploadCrossoverMapping() {
+    if (!crossoverFile) {
+      setSportWrenchError('Please select a CSV file');
+      return;
+    }
+
+    setUploadingCrossover(true);
+    setCrossoverResult(null);
+    setSportWrenchError(null);
+
+    try {
+      const text = await crossoverFile.text();
+      const lines = text.trim().split('\n');
+      
+      // Parse CSV (MatchID,IsCrossover)
+      const mappings: Array<{ matchId: string; isCrossover: boolean }> = [];
+      
+      // Skip header if present
+      const startIndex = lines[0].toLowerCase().includes('matchid') ? 1 : 0;
+      
+      for (let i = startIndex; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        const parts = line.split(',');
+        if (parts.length >= 2) {
+          const matchId = parts[0].trim();
+          const isCrossover = parts[1].trim().toLowerCase() === 'true' || parts[1].trim() === '1';
+          mappings.push({ matchId, isCrossover });
+        }
+      }
+
+      if (mappings.length === 0) {
+        setSportWrenchError('No valid mappings found in CSV');
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/schedule/upload-crossover-mapping`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mappings })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setCrossoverResult(`✅ ${data.message}`);
+        setCrossoverFile(null);
+        // Reset file input
+        const fileInput = document.getElementById('crossover-file-input') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+      } else {
+        setSportWrenchError(data.error || 'Upload failed');
+      }
+    } catch (err) {
+      setSportWrenchError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadingCrossover(false);
+    }
   }
 
   // ==========================================
@@ -892,14 +1006,107 @@ function AdminUI() {
               </div>
             </div>
 
+            {/* Import Section - show after Event ID is configured */}
+            {sportWrenchEventId && (
+              <div className="p-4 rounded-lg mb-6" style={{ backgroundColor: 'rgba(221, 253, 81, 0.1)', border: '1px solid rgba(221, 253, 81, 0.3)' }}>
+                <h3 className="font-bold mb-3" style={{ color: '#DDFD51' }}>📥 Step 1: Import Matches from SportWrench</h3>
+                <p className="text-sm mb-4" style={{ color: '#9a9ab8' }}>
+                  Import matches for specific courts. Multi-day tournaments are handled automatically (Day 1 matches scheduled before Day 2).
+                </p>
+
+                <div className="flex flex-wrap gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm mb-1" style={{ color: '#9a9ab8' }}>Court Min</label>
+                    <input
+                      type="number"
+                      value={importCourtMin}
+                      onChange={(e) => setImportCourtMin(e.target.value)}
+                      className="w-24 px-3 py-2 rounded-lg font-mono"
+                      style={{ backgroundColor: '#000429', color: '#ffffff', border: '1px solid #DDFD51' }}
+                      min="1"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm mb-1" style={{ color: '#9a9ab8' }}>Court Max</label>
+                    <input
+                      type="number"
+                      value={importCourtMax}
+                      onChange={(e) => setImportCourtMax(e.target.value)}
+                      className="w-24 px-3 py-2 rounded-lg font-mono"
+                      style={{ backgroundColor: '#000429', color: '#ffffff', border: '1px solid #DDFD51' }}
+                      min="1"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      onClick={importFromSportWrench}
+                      disabled={importing}
+                      className="px-6 py-2 rounded-lg font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
+                      style={{ backgroundColor: '#DDFD51', color: '#000429' }}
+                    >
+                      {importing ? '⏳ Importing...' : '📥 Import Matches'}
+                    </button>
+                  </div>
+                </div>
+
+                {importResult && (
+                  <div className="p-3 rounded-lg bg-green-900 text-green-200 text-sm">
+                    {importResult}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Crossover CSV Upload Section */}
+            {sportWrenchEventId && (
+              <div className="p-4 rounded-lg mb-6" style={{ backgroundColor: 'rgba(100, 100, 100, 0.2)', border: '1px solid rgba(100, 100, 100, 0.3)' }}>
+                <h3 className="font-bold mb-3" style={{ color: '#DDFD51' }}>📋 Step 2: Upload Crossover Mapping (Optional)</h3>
+                <p className="text-sm mb-4" style={{ color: '#9a9ab8' }}>
+                  Upload a CSV to flag which matches are crossovers. This is optional.
+                </p>
+
+                <div className="mb-4">
+                  <label className="block text-sm mb-2" style={{ color: '#9a9ab8' }}>CSV Format: MatchID,IsCrossover</label>
+                  <div className="flex flex-wrap gap-4">
+                    <input
+                      id="crossover-file-input"
+                      type="file"
+                      accept=".csv"
+                      onChange={(e) => setCrossoverFile(e.target.files?.[0] || null)}
+                      className="flex-1 px-3 py-2 rounded-lg text-sm"
+                      style={{ backgroundColor: '#000429', color: '#ffffff', border: '1px solid #666' }}
+                    />
+                    <button
+                      onClick={uploadCrossoverMapping}
+                      disabled={uploadingCrossover || !crossoverFile}
+                      className="px-6 py-2 rounded-lg font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
+                      style={{ backgroundColor: '#4a90d9', color: '#ffffff' }}
+                    >
+                      {uploadingCrossover ? '⏳ Uploading...' : '📤 Upload CSV'}
+                    </button>
+                  </div>
+                  <p className="text-xs mt-2" style={{ color: '#666' }}>
+                    Example: 24724_14 O_R1P5M6,true
+                  </p>
+                </div>
+
+                {crossoverResult && (
+                  <div className="p-3 rounded-lg bg-green-900 text-green-200 text-sm">
+                    {crossoverResult}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* How It Works */}
             <div className="p-4 rounded-lg" style={{ backgroundColor: '#000429' }}>
               <div className="text-sm font-semibold mb-2" style={{ color: '#DDFD51' }}>💡 How It Works</div>
               <ul className="text-sm space-y-2" style={{ color: '#9a9ab8' }}>
-                <li>1. Upload your schedule CSV with <strong>MatchID</strong> column</li>
-                <li>2. Enter the SportWrench 5-digit Event ID above</li>
-                <li>3. Team names will auto-update every 5 minutes</li>
-                <li>4. MatchIDs from CSV are matched to SportWrench match_id field</li>
+                <li>1. Enter your SportWrench 5-digit Event ID and save</li>
+                <li>2. <strong>Import matches</strong> from SportWrench for your courts</li>
+                <li>3. <strong>Optionally</strong> upload a CSV to mark crossover matches</li>
+                <li>4. Team names will <strong>auto-sync</strong> every 5 minutes</li>
+                <li>5. Multi-day tournaments: Day 1 matches are scheduled before Day 2</li>
               </ul>
             </div>
 
