@@ -15,6 +15,7 @@ function ControlUI() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<'success' | 'error' | 'warning'>('success');
   const [tournamentLabel, setTournamentLabel] = useState('Winter Formal');
+  const [isStartingMatch, setIsStartingMatch] = useState(false);
 
   const { scoreState, isConnected } = useSocket(selectedCourt);
 
@@ -126,7 +127,9 @@ function ControlUI() {
   }
 
   async function advanceToNextMatch() {
-    if (!selectedCourt) return;
+    if (!selectedCourt || isStartingMatch) return;
+    
+    setIsStartingMatch(true);
     
     try {
       const response = await fetch(`${API_URL}/api/court/${selectedCourt}/advanceToNextMatch`, {
@@ -156,6 +159,8 @@ function ControlUI() {
     } catch (error) {
       console.error('Error advancing to next match:', error);
       alert('Error advancing to next match');
+    } finally {
+      setIsStartingMatch(false);
     }
   }
 
@@ -367,11 +372,11 @@ function ControlUI() {
 
           <button
             onClick={advanceToNextMatch}
-            disabled={nextTwoMatches.length === 0}
+            disabled={nextTwoMatches.length === 0 || isStartingMatch}
             className="w-full font-bold py-6 px-6 rounded-xl text-2xl transition-opacity disabled:opacity-50"
             style={{ backgroundColor: '#DDFD51', color: '#000429' }}
           >
-            Begin Match
+            {isStartingMatch ? '⏳ Starting...' : 'Begin Match'}
           </button>
 
           {/* Change Court Button */}

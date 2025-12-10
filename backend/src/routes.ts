@@ -96,8 +96,20 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
   try {
     const courtId = parseInt(req.params.id);
     
-    // Mark the current match as completed
+    // Check if there's already an active (non-completed) match in progress
     const currentMatch = await getCurrentMatch(courtId);
+    if (currentMatch && !currentMatch.is_completed) {
+      // A match is already in progress - don't start a new one
+      // Return the current match info instead
+      console.log(`⚠️ Court ${courtId}: Match ${currentMatch.id} already in progress, ignoring duplicate start request`);
+      return res.json({
+        ...currentMatch,
+        alreadyInProgress: true,
+        message: 'Match already in progress'
+      });
+    }
+    
+    // Mark the current match as completed (if it exists and wasn't already)
     if (currentMatch) {
       await updateMatch(currentMatch.id, { is_completed: true });
     }
