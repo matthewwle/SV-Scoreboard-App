@@ -696,10 +696,12 @@ router.post('/schedule/import-from-sportwrench', async (req, res) => {
   res.json({
     success: result.success,
     message: result.success
-      ? `Imported ${result.imported} new matches, updated ${result.updated} existing`
+      ? `Imported ${result.imported} new matches, updated ${result.updated} existing (Event: ${eventId}, Courts: ${courtFilter?.min || 'all'}-${courtFilter?.max || 'all'})`
       : 'Import failed',
     imported: result.imported,
     updated: result.updated,
+    eventIdUsed: eventId,
+    courtFilter: courtFilter,
     dayStats: result.dayStats,
     errors: result.errors.slice(0, 10) // Limit error output
   });

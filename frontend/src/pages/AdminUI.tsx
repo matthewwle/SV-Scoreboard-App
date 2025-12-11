@@ -476,13 +476,21 @@ function AdminUI() {
   // Import matches from SportWrench
   async function importFromSportWrench() {
     if (!sportWrenchEventId) {
-      setSportWrenchError('Please save an Event ID first');
+      setSportWrenchError('Please save an Event ID first (click Save button after entering the ID)');
+      return;
+    }
+
+    // Check if input differs from saved value
+    if (sportWrenchInput && sportWrenchInput !== sportWrenchEventId) {
+      setSportWrenchError(`You entered "${sportWrenchInput}" but haven't saved it. Currently saved: "${sportWrenchEventId}". Click Save first!`);
       return;
     }
 
     setImporting(true);
     setImportResult(null);
     setSportWrenchError(null);
+
+    console.log(`Importing from Event ID: ${sportWrenchEventId}, Courts: ${importCourtMin}-${importCourtMax}`);
 
     try {
       const response = await fetch(`${API_URL}/api/schedule/import-from-sportwrench`, {
