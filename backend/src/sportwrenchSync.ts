@@ -442,6 +442,7 @@ export async function importFromSportWrench(
             updated++;
           } else {
             // Create new match
+            // Note: Only include columns that exist in the matches table
             const { error: insertError } = await supabase
               .from('matches')
               .insert({
@@ -452,10 +453,8 @@ export async function importFromSportWrench(
                 external_match_id: swMatch.match_id,
                 is_crossover: false, // Default, will be set by CSV upload
                 is_completed: false,
-                score_a: 0,
-                score_b: 0,
-                current_set: 1,
-                set_scores: []
+                sets_a: 0,
+                sets_b: 0
               });
             
             if (insertError) {
