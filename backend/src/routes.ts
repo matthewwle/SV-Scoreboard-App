@@ -942,8 +942,8 @@ router.post('/schedule/:courtId/add', async (req, res) => {
       sets_a: 0,
       sets_b: 0,
       start_time: newStartTime,
-      is_completed: false
-      // Note: external_match_id removed - column may not exist in database
+      is_completed: false,
+      external_match_id: externalMatchId || '0000'  // Default to "0000" for manually added games
     });
     
     if (!newMatch) {
