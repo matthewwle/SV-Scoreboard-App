@@ -753,11 +753,44 @@ router.get('/schedule/:courtId', async (req, res) => {
         teamA: m.team_a,
         teamB: m.team_b,
         externalMatchId: m.external_match_id,
-        isCompleted: m.is_completed
+        isCompleted: m.is_completed,
+        isCrossover: m.is_crossover || false
       }))
     });
   } catch (error) {
     console.error('Error fetching schedule:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Toggle crossover status for a match
+router.post('/schedule/match/:matchId/crossover', async (req, res) => {
+  try {
+    const matchId = parseInt(req.params.matchId);
+    const { isCrossover } = req.body;
+    
+    if (typeof isCrossover !== 'boolean') {
+      return res.status(400).json({ error: 'isCrossover must be a boolean' });
+    }
+    
+    const updatedMatch = await updateMatch(matchId, {
+      is_crossover: isCrossover
+    });
+    
+    if (!updatedMatch) {
+      return res.status(404).json({ error: 'Match not found' });
+    }
+    
+    console.log(`🔄 Match ${matchId} crossover set to: ${isCrossover}`);
+    
+    res.json({
+      success: true,
+      matchId,
+      isCrossover,
+      message: `Match ${matchId} crossover ${isCrossover ? 'enabled' : 'disabled'}`
+    });
+  } catch (error) {
+    console.error('Error updating crossover status:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

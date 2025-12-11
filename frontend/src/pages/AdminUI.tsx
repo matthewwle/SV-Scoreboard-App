@@ -26,6 +26,7 @@ interface ScheduleGame {
   teamB: string;
   externalMatchId: string | null;
   isCompleted: boolean;
+  isCrossover: boolean;
 }
 
 interface Court {
@@ -74,6 +75,7 @@ function AdminUI() {
   const [newGameTeamA, setNewGameTeamA] = useState('');
   const [newGameTeamB, setNewGameTeamB] = useState('');
   const [addingGame, setAddingGame] = useState(false);
+  const [togglingCrossoverId, setTogglingCrossoverId] = useState<number | null>(null);
 
   // SportWrench settings state
   const [showSportWrenchSettings, setShowSportWrenchSettings] = useState(false);
@@ -676,6 +678,35 @@ function AdminUI() {
     }
   }
 
+  // Toggle crossover status for a game
+  async function toggleCrossover(gameId: number, currentValue: boolean) {
+    setTogglingCrossoverId(gameId);
+    
+    try {
+      const response = await fetch(`${API_URL}/api/schedule/match/${gameId}/crossover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isCrossover: !currentValue })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update crossover status');
+      }
+
+      // Update local state immediately
+      setScheduleGames(prev => 
+        prev.map(g => g.id === gameId 
+          ? { ...g, isCrossover: !currentValue }
+          : g
+        )
+      );
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : 'Failed to toggle crossover');
+    } finally {
+      setTogglingCrossoverId(null);
+    }
+  }
+
   // Delete game and shift times
   async function deleteGame(gameId: number) {
     if (!selectedCourtId) return;
@@ -1213,6 +1244,7 @@ function AdminUI() {
                           <th className="py-3 px-4 text-left font-bold" style={{ color: '#DDFD51', width: '100px' }}>Time</th>
                           <th className="py-3 px-4 text-left font-bold" style={{ color: '#DDFD51' }}>Team A</th>
                           <th className="py-3 px-4 text-left font-bold" style={{ color: '#DDFD51' }}>Team B</th>
+                          <th className="py-3 px-4 text-center font-bold" style={{ color: '#DDFD51', width: '100px' }}>Crossover</th>
                           <th className="py-3 px-4 text-center font-bold" style={{ color: '#DDFD51', width: '80px' }}>Status</th>
                           <th className="py-3 px-4 text-center font-bold" style={{ color: '#DDFD51', width: '180px' }}>Actions</th>
                         </tr>
@@ -1256,6 +1288,21 @@ function AdminUI() {
                                   border: '1px solid #DDFD51'
                                 }}
                               />
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <button
+                                onClick={() => toggleCrossover(game.id, game.isCrossover)}
+                                disabled={togglingCrossoverId === game.id}
+                                className="px-3 py-1 rounded-lg text-sm font-bold transition-all"
+                                style={{
+                                  backgroundColor: game.isCrossover ? '#DDFD51' : '#2a2a4e',
+                                  color: game.isCrossover ? '#000429' : '#9a9ab8',
+                                  border: game.isCrossover ? '2px solid #DDFD51' : '2px solid #666',
+                                  opacity: togglingCrossoverId === game.id ? 0.5 : 1
+                                }}
+                              >
+                                {togglingCrossoverId === game.id ? '...' : (game.isCrossover ? 'YES' : 'NO')}
+                              </button>
                             </td>
                             <td className="py-3 px-4 text-center">
                               {game.isCompleted ? (
