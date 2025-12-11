@@ -625,12 +625,12 @@ router.get('/settings/sportwrenchTest', async (req, res) => {
       : [];
     
     // Get court range info
-    const courts = isJsonArray 
-      ? response.data.map((m: any) => m.court).filter((c: any) => c !== undefined)
+    const courts: number[] = isJsonArray 
+      ? response.data.map((m: any) => m.court).filter((c: any) => typeof c === 'number')
       : [];
-    const uniqueCourts = [...new Set(courts)].sort((a: number, b: number) => a - b);
-    const courtMin = uniqueCourts.length > 0 ? Math.min(...uniqueCourts as number[]) : null;
-    const courtMax = uniqueCourts.length > 0 ? Math.max(...uniqueCourts as number[]) : null;
+    const uniqueCourts = [...new Set(courts)].sort((a, b) => a - b);
+    const courtMin = uniqueCourts.length > 0 ? Math.min(...uniqueCourts) : null;
+    const courtMax = uniqueCourts.length > 0 ? Math.max(...uniqueCourts) : null;
     
     console.log(`✅ SportWrench API test SUCCESS: ${matchCount} matches in ${duration}ms, courts ${courtMin}-${courtMax}`);
     
