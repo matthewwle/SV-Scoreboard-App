@@ -624,7 +624,15 @@ router.get('/settings/sportwrenchTest', async (req, res) => {
       ? response.data.slice(0, 3).map((m: any) => m.match_id)
       : [];
     
-    console.log(`✅ SportWrench API test SUCCESS: ${matchCount} matches in ${duration}ms`);
+    // Get court range info
+    const courts = isJsonArray 
+      ? response.data.map((m: any) => m.court).filter((c: any) => c !== undefined)
+      : [];
+    const uniqueCourts = [...new Set(courts)].sort((a: number, b: number) => a - b);
+    const courtMin = uniqueCourts.length > 0 ? Math.min(...uniqueCourts as number[]) : null;
+    const courtMax = uniqueCourts.length > 0 ? Math.max(...uniqueCourts as number[]) : null;
+    
+    console.log(`✅ SportWrench API test SUCCESS: ${matchCount} matches in ${duration}ms, courts ${courtMin}-${courtMax}`);
     
     res.json({
       success: true,
@@ -634,7 +642,8 @@ router.get('/settings/sportwrenchTest', async (req, res) => {
       matchCount,
       isValidResponse: isJsonArray,
       sampleMatchIds,
-      message: `Successfully fetched ${matchCount} matches from SportWrench`
+      courtRange: { min: courtMin, max: courtMax, total: uniqueCourts.length },
+      message: `Successfully fetched ${matchCount} matches from SportWrench (courts ${courtMin}-${courtMax})`
     });
   } catch (error: any) {
     const duration = Date.now();
