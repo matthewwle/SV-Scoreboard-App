@@ -691,13 +691,15 @@ router.post('/schedule/import-from-sportwrench', async (req, res) => {
   
   console.log(`📥 Import request: Event ${eventId}, Courts: ${courtFilter ? `${courtFilter.min}-${courtFilter.max}` : 'all'}`);
   
-  const result = await importFromSportWrench(eventId, courtFilter);
+  // Clear existing matches and import fresh from SportWrench
+  const result = await importFromSportWrench(eventId, courtFilter, true);
   
   res.json({
     success: result.success,
     message: result.success
-      ? `Imported ${result.imported} new matches, updated ${result.updated} existing (Event: ${eventId}, Courts: ${courtFilter?.min || 'all'}-${courtFilter?.max || 'all'})`
+      ? `Cleared ${result.cleared} old matches. Imported ${result.imported} new matches. (Event: ${eventId}, Courts: ${courtFilter?.min || 'all'}-${courtFilter?.max || 'all'})`
       : 'Import failed',
+    cleared: result.cleared,
     imported: result.imported,
     updated: result.updated,
     eventIdUsed: eventId,

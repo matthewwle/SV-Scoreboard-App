@@ -311,11 +311,13 @@ export function restartSportWrenchSync(): void {
  */
 export async function importFromSportWrench(
   eventId: string,
-  courtFilter?: { min: number; max: number }
+  courtFilter?: { min: number; max: number },
+  clearExisting: boolean = true  // Default to clearing existing matches
 ): Promise<{
   success: boolean;
   imported: number;
   updated: number;
+  cleared: number;
   errors: string[];
   dayStats: Record<number, number>;
   debug?: any;
@@ -326,7 +328,62 @@ export async function importFromSportWrench(
   console.log(`📥 IMPORT START: Event ${eventId}`);
   console.log(`📥 API URL: ${apiUrl}`);
   console.log(`📥 Court filter: ${courtFilter ? `${courtFilter.min}-${courtFilter.max}` : 'none'}`);
+  console.log(`📥 Clear existing: ${clearExisting}`);
   console.log(`📥 ============================================`);
+  
+  let cleared = 0;
+  
+  // Clear existing matches if requested (only for initial import, not polling sync)
+  if (clearExisting) {
+    console.log(`🗑️ Clearing existing matches...`);
+    try {
+      // First, reset all court assignments
+      const { error: courtResetError } = await supabase
+        .from('courts')
+        .update({ current_match_id: null })
+        .not('id', 'is', null);  // Update all courts
+      
+      if (courtResetError) {
+        console.error(`❌ Error resetting courts:`, courtResetError);
+      }
+      
+      // Count existing matches before deletion
+      const { count: existingCount } = await supabase
+        .from('matches')
+        .select('*', { count: 'exact', head: true });
+      
+      // Delete all matches (this will cascade to score_states and match_logs)
+      const { error: deleteError } = await supabase
+        .from('matches')
+        .delete()
+        .not('id', 'is', null);  // Delete all matches
+      
+      if (deleteError) {
+        console.error(`❌ Error deleting matches:`, deleteError);
+        return {
+          success: false,
+          imported: 0,
+          updated: 0,
+          cleared: 0,
+          errors: [`Failed to clear existing matches: ${deleteError.message}`],
+          dayStats: {}
+        };
+      }
+      
+      cleared = existingCount || 0;
+      console.log(`🗑️ Cleared ${cleared} existing matches`);
+    } catch (err: any) {
+      console.error(`❌ Error clearing matches:`, err);
+      return {
+        success: false,
+        imported: 0,
+        updated: 0,
+        cleared: 0,
+        errors: [`Failed to clear existing matches: ${err.message}`],
+        dayStats: {}
+      };
+    }
+  }
   
   try {
     console.log(`📥 Fetching from SportWrench API...`);
@@ -341,6 +398,7 @@ export async function importFromSportWrench(
         success: true,
         imported: 0,
         updated: 0,
+        cleared,
         errors: ['API returned 0 matches - verify Event ID is correct'],
         dayStats: {},
         debug: { apiUrl, responseLength: 0 }
@@ -368,6 +426,7 @@ export async function importFromSportWrench(
           success: true,
           imported: 0,
           updated: 0,
+          cleared,
           errors: [`No matches found for courts ${courtFilter.min}-${courtFilter.max}. Actual court range in data: ${actualMin}-${actualMax}`],
           dayStats: {},
           debug: { actualCourtRange: { min: actualMin, max: actualMax }, requestedRange: courtFilter }
@@ -484,6 +543,7 @@ export async function importFromSportWrench(
     
     console.log(`📥 ============================================`);
     console.log(`📥 IMPORT COMPLETE`);
+    console.log(`📥 Cleared: ${cleared} old matches`);
     console.log(`📥 Processed: ${processedCount} matches`);
     console.log(`📥 Imported: ${imported} new`);
     console.log(`📥 Updated: ${updated} existing`);
@@ -491,7 +551,7 @@ export async function importFromSportWrench(
     console.log(`📅 Day distribution:`, dayStats);
     console.log(`📥 ============================================`);
     
-    return { success: true, imported, updated, errors, dayStats };
+    return { success: true, imported, updated, cleared, errors, dayStats };
   } catch (error: any) {
     console.error('❌ IMPORT FAILED:', error.message);
     console.error('❌ Stack:', error.stack);
@@ -499,6 +559,7 @@ export async function importFromSportWrench(
       success: false,
       imported: 0,
       updated: 0,
+      cleared: 0,
       errors: [error.message],
       dayStats: {},
       debug: { error: error.message, stack: error.stack }
