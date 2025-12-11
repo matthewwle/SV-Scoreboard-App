@@ -318,23 +318,61 @@ export async function importFromSportWrench(
   updated: number;
   errors: string[];
   dayStats: Record<number, number>;
+  debug?: any;
 }> {
   const apiUrl = `https://my.sportwrench.com/api/tpc/export/${eventId}/schedule`;
   
-  console.log(`📥 Importing matches from SportWrench event ${eventId}...`);
+  console.log(`📥 ============================================`);
+  console.log(`📥 IMPORT START: Event ${eventId}`);
+  console.log(`📥 API URL: ${apiUrl}`);
+  console.log(`📥 Court filter: ${courtFilter ? `${courtFilter.min}-${courtFilter.max}` : 'none'}`);
+  console.log(`📥 ============================================`);
   
   try {
+    console.log(`📥 Fetching from SportWrench API...`);
     const response = await axios.get(apiUrl, { timeout: 30000 });
     let swMatches: SportWrenchMatch[] = response.data || [];
     
-    console.log(`📊 Fetched ${swMatches.length} total matches from SportWrench`);
+    console.log(`📊 API Response: ${swMatches.length} total matches`);
+    
+    if (swMatches.length === 0) {
+      console.log(`⚠️ API returned 0 matches - check Event ID`);
+      return {
+        success: true,
+        imported: 0,
+        updated: 0,
+        errors: ['API returned 0 matches - verify Event ID is correct'],
+        dayStats: {},
+        debug: { apiUrl, responseLength: 0 }
+      };
+    }
+    
+    // Log sample of first match for debugging
+    console.log(`📋 Sample match from API:`, JSON.stringify(swMatches[0], null, 2));
     
     // Filter by court if specified
+    const beforeFilterCount = swMatches.length;
     if (courtFilter) {
       swMatches = swMatches.filter(
         m => m.court >= courtFilter.min && m.court <= courtFilter.max
       );
-      console.log(`🔍 Filtered to ${swMatches.length} matches for courts ${courtFilter.min}-${courtFilter.max}`);
+      console.log(`🔍 Court filter applied: ${beforeFilterCount} → ${swMatches.length} matches (courts ${courtFilter.min}-${courtFilter.max})`);
+      
+      if (swMatches.length === 0) {
+        // Get actual court range from the data
+        const actualCourts = response.data.map((m: any) => m.court).filter((c: any) => typeof c === 'number');
+        const actualMin = Math.min(...actualCourts);
+        const actualMax = Math.max(...actualCourts);
+        console.log(`⚠️ No matches in court range! Actual courts in data: ${actualMin}-${actualMax}`);
+        return {
+          success: true,
+          imported: 0,
+          updated: 0,
+          errors: [`No matches found for courts ${courtFilter.min}-${courtFilter.max}. Actual court range in data: ${actualMin}-${actualMax}`],
+          dayStats: {},
+          debug: { actualCourtRange: { min: actualMin, max: actualMax }, requestedRange: courtFilter }
+        };
+      }
     }
     
     // Sort by day first, then by date_time (ensures Day 1 matches come before Day 2)
@@ -360,23 +398,33 @@ export async function importFromSportWrench(
     let updated = 0;
     const errors: string[] = [];
     
+    console.log(`📥 Processing ${matchesByCourt.size} courts...`);
+    
     // Process each court's matches in order
+    let processedCount = 0;
     for (const [courtId, matches] of matchesByCourt) {
       const daysOnCourt = new Set(matches.map(m => m.day)).size;
       console.log(`📋 Court ${courtId}: ${matches.length} matches across ${daysOnCourt} day(s)`);
       
       for (const swMatch of matches) {
+        processedCount++;
         try {
           // Check if match already exists (by external_match_id)
-          const { data: existing } = await supabase
+          const { data: existing, error: selectError } = await supabase
             .from('matches')
             .select('id')
             .eq('external_match_id', swMatch.match_id)
             .maybeSingle();
           
+          if (selectError) {
+            console.error(`❌ DB SELECT error for ${swMatch.match_id}:`, selectError);
+            errors.push(`${swMatch.match_id}: SELECT error - ${selectError.message}`);
+            continue;
+          }
+          
           if (existing) {
             // Update existing match with latest team names
-            const { error } = await supabase
+            const { error: updateError } = await supabase
               .from('matches')
               .update({
                 team_a: swMatch.team_1_name,
@@ -386,11 +434,15 @@ export async function importFromSportWrench(
               })
               .eq('id', existing.id);
             
-            if (error) throw error;
+            if (updateError) {
+              console.error(`❌ DB UPDATE error for ${swMatch.match_id}:`, updateError);
+              errors.push(`${swMatch.match_id}: UPDATE error - ${updateError.message}`);
+              continue;
+            }
             updated++;
           } else {
             // Create new match
-            const { error } = await supabase
+            const { error: insertError } = await supabase
               .from('matches')
               .insert({
                 court_id: swMatch.court,
@@ -406,11 +458,21 @@ export async function importFromSportWrench(
                 set_scores: []
               });
             
-            if (error) throw error;
+            if (insertError) {
+              console.error(`❌ DB INSERT error for ${swMatch.match_id}:`, insertError);
+              errors.push(`${swMatch.match_id}: INSERT error - ${insertError.message}`);
+              continue;
+            }
             imported++;
+            
+            // Log first few successful imports
+            if (imported <= 3) {
+              console.log(`✅ Imported: ${swMatch.match_id} → Court ${swMatch.court}`);
+            }
           }
         } catch (err: any) {
-          errors.push(`Match ${swMatch.match_id}: ${err.message}`);
+          console.error(`❌ Unexpected error for ${swMatch.match_id}:`, err);
+          errors.push(`${swMatch.match_id}: ${err.message}`);
         }
       }
     }
@@ -421,18 +483,26 @@ export async function importFromSportWrench(
       return acc;
     }, {} as Record<number, number>);
     
+    console.log(`📥 ============================================`);
+    console.log(`📥 IMPORT COMPLETE`);
+    console.log(`📥 Processed: ${processedCount} matches`);
+    console.log(`📥 Imported: ${imported} new`);
+    console.log(`📥 Updated: ${updated} existing`);
+    console.log(`📥 Errors: ${errors.length}`);
     console.log(`📅 Day distribution:`, dayStats);
-    console.log(`✅ Import complete: ${imported} new, ${updated} updated, ${errors.length} errors`);
+    console.log(`📥 ============================================`);
     
     return { success: true, imported, updated, errors, dayStats };
   } catch (error: any) {
-    console.error('❌ Failed to import from SportWrench:', error.message);
+    console.error('❌ IMPORT FAILED:', error.message);
+    console.error('❌ Stack:', error.stack);
     return {
       success: false,
       imported: 0,
       updated: 0,
       errors: [error.message],
-      dayStats: {}
+      dayStats: {},
+      debug: { error: error.message, stack: error.stack }
     };
   }
 }
