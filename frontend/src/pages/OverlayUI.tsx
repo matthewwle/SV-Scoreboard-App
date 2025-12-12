@@ -49,7 +49,7 @@ function OverlayUI() {
   }, []);
 
   return (
-    <div style={{ transform: 'scale(0.30)', transformOrigin: 'top left', width: '333vw', height: '333vh' }}>
+    <div style={{ transform: 'scale(0.36)', transformOrigin: 'top left', width: '278vw', height: '278vh' }}>
       <div className="min-h-screen flex items-start justify-start p-8" style={{ backgroundColor: 'transparent' }}>
         <div className="w-full max-w-5xl">
           {/* Compact Horizontal Scoreboard */}
