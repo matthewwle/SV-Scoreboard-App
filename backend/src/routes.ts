@@ -927,11 +927,14 @@ router.delete('/schedule/:courtId/:matchId', async (req, res) => {
       return res.status(500).json({ error: 'Failed to delete match' });
     }
     
-    // Shift later matches up by 1 hour
+    // Shift later matches up by the deleted match's duration
+    // Crossover = 30 minutes, Normal = 60 minutes
+    const minutesToShift = matchToDelete.is_crossover ? 30 : 60;
+    
     for (const match of laterMatches) {
-      const currentTime = new Date(match.start_time);
-      currentTime.setHours(currentTime.getHours() - 1);
-      await updateMatch(match.id, { start_time: currentTime.toISOString() });
+      // Subtract the duration from each later match's start time
+      const newStartTime = addTimeToTimeString(match.start_time, -minutesToShift);
+      await updateMatch(match.id, { start_time: newStartTime });
     }
     
     console.log(`🗑️ Schedule: Deleted match ${matchId} on Court ${courtId}, shifted ${laterMatches.length} later games`);
@@ -947,17 +950,32 @@ router.delete('/schedule/:courtId/:matchId', async (req, res) => {
   }
 });
 
-// Helper function to add 1 hour to a time string
-function addOneHourToTimeString(timeStr: string): string {
+// Helper function to add time to a time string (supports ISO datetime or time string)
+function addTimeToTimeString(timeStr: string, minutesToAdd: number): string {
+  // Try parsing as ISO datetime first (from SportWrench)
+  let date: Date;
+  try {
+    date = new Date(timeStr);
+    if (!isNaN(date.getTime())) {
+      // Valid ISO date
+      date.setMinutes(date.getMinutes() + minutesToAdd);
+      return date.toISOString();
+    }
+  } catch (e) {
+    // Not ISO format, continue with string parsing
+  }
+  
   // Handle formats like "8:00 AM", "10:30 PM", "09:00"
   const match = timeStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
   if (!match) {
-    // If can't parse, just append " +1hr" or return a default
-    return timeStr;
+    // If can't parse, try to add to current time
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + minutesToAdd);
+    return now.toISOString();
   }
   
   let hours = parseInt(match[1]);
-  const minutes = match[2];
+  let minutes = parseInt(match[2]);
   const period = match[3]?.toUpperCase();
   
   if (period) {
@@ -965,17 +983,21 @@ function addOneHourToTimeString(timeStr: string): string {
     if (period === 'PM' && hours !== 12) hours += 12;
     if (period === 'AM' && hours === 12) hours = 0;
     
-    // Add 1 hour
-    hours = (hours + 1) % 24;
+    // Add minutes
+    const totalMinutes = hours * 60 + minutes + minutesToAdd;
+    hours = Math.floor(totalMinutes / 60) % 24;
+    minutes = totalMinutes % 60;
     
     // Convert back to 12-hour format
     const newPeriod = hours >= 12 ? 'PM' : 'AM';
     const displayHours = hours % 12 || 12;
-    return `${displayHours}:${minutes} ${newPeriod}`;
+    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${newPeriod}`;
   } else {
     // 24-hour format
-    hours = (hours + 1) % 24;
-    return `${hours.toString().padStart(2, '0')}:${minutes}`;
+    const totalMinutes = hours * 60 + minutes + minutesToAdd;
+    hours = Math.floor(totalMinutes / 60) % 24;
+    minutes = totalMinutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
   }
 }
 
@@ -983,7 +1005,7 @@ function addOneHourToTimeString(timeStr: string): string {
 router.post('/schedule/:courtId/add', async (req, res) => {
   try {
     const courtId = parseInt(req.params.courtId);
-    const { teamA, teamB, externalMatchId } = req.body;
+    const { teamA, teamB, externalMatchId, isCrossover } = req.body;
     
     if (!teamA || !teamB) {
       return res.status(400).json({ error: 'teamA and teamB are required' });
@@ -994,14 +1016,15 @@ router.post('/schedule/:courtId/add', async (req, res) => {
     
     let newStartTime: string;
     if (lastMatch && lastMatch.start_time) {
-      // Add 1 hour to the last match time
-      newStartTime = addOneHourToTimeString(lastMatch.start_time);
+      // Add duration based on match type: 30 min for crossover, 1 hour for normal
+      const minutesToAdd = isCrossover ? 30 : 60;
+      newStartTime = addTimeToTimeString(lastMatch.start_time, minutesToAdd);
     } else {
       // Default to 8:00 AM if no matches exist
       newStartTime = '8:00 AM';
     }
     
-    console.log(`➕ Attempting to add match on Court ${courtId}: ${teamA} vs ${teamB} at ${newStartTime}`);
+    console.log(`➕ Attempting to add match on Court ${courtId}: ${teamA} vs ${teamB} at ${newStartTime} (${isCrossover ? 'crossover' : 'normal'})`);
     
     const newMatch = await createMatch({
       court_id: courtId,
@@ -1011,6 +1034,7 @@ router.post('/schedule/:courtId/add', async (req, res) => {
       sets_b: 0,
       start_time: newStartTime,
       is_completed: false,
+      is_crossover: !!isCrossover,
       external_match_id: externalMatchId || '0000'  // Default to "0000" for manually added games
     });
     

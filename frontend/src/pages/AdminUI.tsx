@@ -74,6 +74,7 @@ function AdminUI() {
   const [showAddGameModal, setShowAddGameModal] = useState(false);
   const [newGameTeamA, setNewGameTeamA] = useState('');
   const [newGameTeamB, setNewGameTeamB] = useState('');
+  const [newGameIsCrossover, setNewGameIsCrossover] = useState(false);
   const [addingGame, setAddingGame] = useState(false);
   const [togglingCrossoverId, setTogglingCrossoverId] = useState<number | null>(null);
   const [reorderingGameId, setReorderingGameId] = useState<number | null>(null);
@@ -793,7 +794,8 @@ function AdminUI() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           teamA: newGameTeamA.trim(),
-          teamB: newGameTeamB.trim()
+          teamB: newGameTeamB.trim(),
+          isCrossover: newGameIsCrossover
         })
       });
 
@@ -805,6 +807,7 @@ function AdminUI() {
       setShowAddGameModal(false);
       setNewGameTeamA('');
       setNewGameTeamB('');
+      setNewGameIsCrossover(false);
       
       // Reload schedule
       loadSchedule(selectedCourtId);
@@ -1424,6 +1427,7 @@ function AdminUI() {
                     setShowAddGameModal(false);
                     setNewGameTeamA('');
                     setNewGameTeamB('');
+                    setNewGameIsCrossover(false);
                   }}
                   className="text-2xl hover:opacity-70 transition-opacity"
                   style={{ color: '#DDFD51' }}
@@ -1433,7 +1437,9 @@ function AdminUI() {
               </div>
 
               <p className="text-sm mb-4" style={{ color: '#9a9ab8' }}>
-                New game will be scheduled 1 hour after the last game on Court {selectedCourtId}
+                New game will be scheduled after the last game on Court {selectedCourtId}
+                <br />
+                <span className="text-xs">(30 min for crossover, 1 hour for normal)</span>
               </p>
 
               <div className="mb-4">
@@ -1473,12 +1479,31 @@ function AdminUI() {
                 />
               </div>
 
+              <div className="mb-6">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newGameIsCrossover}
+                    onChange={(e) => setNewGameIsCrossover(e.target.checked)}
+                    className="w-5 h-5 rounded"
+                    style={{ accentColor: '#DDFD51' }}
+                  />
+                  <span className="text-sm font-semibold" style={{ color: '#DDFD51' }}>
+                    Crossover Match (30 min duration)
+                  </span>
+                </label>
+                <p className="text-xs mt-1 ml-8" style={{ color: '#9a9ab8' }}>
+                  Unchecked = Normal match (1 hour duration)
+                </p>
+              </div>
+
               <div className="flex gap-4">
                 <button
                   onClick={() => {
                     setShowAddGameModal(false);
                     setNewGameTeamA('');
                     setNewGameTeamB('');
+                    setNewGameIsCrossover(false);
                   }}
                   className="flex-1 py-3 px-6 rounded-lg font-bold transition-opacity hover:opacity-80"
                   style={{ backgroundColor: '#2a2a4e', color: '#ffffff' }}
