@@ -123,9 +123,20 @@ async function updateMatchTeamNames(matchId: number, teamA: string, teamB: strin
 }
 
 /**
+ * Helper function to check if a SportWrench match is completed
+ */
+function isMatchCompleted(swMatch: SportWrenchMatch): boolean {
+  // A match is completed if it has results with at least one set
+  return swMatch.results !== null && 
+         (swMatch.results.set1 !== undefined || 
+          swMatch.results.set2 !== undefined || 
+          swMatch.results.set3 !== undefined);
+}
+
+/**
  * Sync schedule from SportWrench to local database
  * - Updates existing matches (team names, court changes)
- * - Adds new matches that don't exist locally
+ * - Adds new matches that don't exist locally (only non-completed ones)
  * - Handles court reassignments
  * Returns array of updated/created match IDs
  */
@@ -144,17 +155,30 @@ export async function syncFromSportWrench(): Promise<number[]> {
     return [];
   }
 
+  // Filter to only non-completed matches for adding new ones
+  const completedCount = swMatches.filter(m => isMatchCompleted(m)).length;
+  console.log(`📋 SportWrench: ${swMatches.length} total, ${completedCount} completed, ${swMatches.length - completedCount} pending`);
+
   // Create lookup map by match_id (this matches our external_match_id)
   const swMatchMap = new Map<string, SportWrenchMatch>();
   for (const match of swMatches) {
     swMatchMap.set(match.match_id, match);
   }
-  console.log(`📋 SportWrench: ${swMatchMap.size} matches available`);
 
   // Get ALL local matches with external IDs to create a lookup
-  const localMatches = await getMatchesWithExternalId();
+  // Query directly from database to ensure we have fresh data
+  const { data: allLocalMatches, error: fetchError } = await supabase
+    .from('matches')
+    .select('*')
+    .not('external_match_id', 'is', null);
+  
+  if (fetchError) {
+    console.error('❌ Failed to fetch local matches:', fetchError);
+    return [];
+  }
+
   const localMatchMap = new Map<string, Match>();
-  for (const match of localMatches) {
+  for (const match of (allLocalMatches || [])) {
     if (match.external_match_id) {
       localMatchMap.set(match.external_match_id, match);
     }
@@ -165,13 +189,17 @@ export async function syncFromSportWrench(): Promise<number[]> {
   let updatedCount = 0;
   let createdCount = 0;
   let courtChangedCount = 0;
+  let skippedCompleted = 0;
+  let skippedExisting = 0;
 
   // Process each SportWrench match
   for (const [swMatchId, swMatch] of swMatchMap) {
     const localMatch = localMatchMap.get(swMatchId);
     
     if (localMatch) {
-      // Match exists locally - check for updates
+      // Match exists locally - check for updates (but don't create duplicates)
+      skippedExisting++;
+      
       const teamAChanged = localMatch.team_a !== swMatch.team_1_name;
       const teamBChanged = localMatch.team_b !== swMatch.team_2_name;
       const courtChanged = localMatch.court_id !== swMatch.court;
@@ -208,7 +236,12 @@ export async function syncFromSportWrench(): Promise<number[]> {
         }
       }
     } else {
-      // Match doesn't exist locally - create it
+      // Match doesn't exist locally - only create if NOT completed in SportWrench
+      if (isMatchCompleted(swMatch)) {
+        skippedCompleted++;
+        continue; // Skip completed matches
+      }
+      
       console.log(`➕ New match from SportWrench: ${swMatchId} on Court ${swMatch.court}`);
       
       const { data: newMatch, error } = await supabase
@@ -241,6 +274,8 @@ export async function syncFromSportWrench(): Promise<number[]> {
   console.log(`   - Updated: ${updatedCount} matches`);
   console.log(`   - Created: ${createdCount} new matches`);
   console.log(`   - Court changes: ${courtChangedCount}`);
+  console.log(`   - Skipped (already exist): ${skippedExisting}`);
+  console.log(`   - Skipped (completed): ${skippedCompleted}`);
 
   return changedMatchIds;
 }
@@ -475,6 +510,12 @@ export async function importFromSportWrench(
         };
       }
     }
+    
+    // Filter out completed matches (only import pending/upcoming matches)
+    const beforeCompletedFilter = swMatches.length;
+    swMatches = swMatches.filter(m => !isMatchCompleted(m));
+    const completedSkipped = beforeCompletedFilter - swMatches.length;
+    console.log(`🔍 Completed filter: ${beforeCompletedFilter} → ${swMatches.length} matches (${completedSkipped} completed matches skipped)`);
     
     // Sort by day first, then by date_time (ensures Day 1 matches come before Day 2)
     swMatches.sort((a, b) => {
