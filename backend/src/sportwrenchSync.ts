@@ -123,9 +123,11 @@ async function updateMatchTeamNames(matchId: number, teamA: string, teamB: strin
 }
 
 /**
- * Sync team names from SportWrench to local database
- * Uses external_match_id (from CSV) to match with SportWrench's match_id
- * Returns array of updated match IDs
+ * Sync schedule from SportWrench to local database
+ * - Updates existing matches (team names, court changes)
+ * - Adds new matches that don't exist locally
+ * - Handles court reassignments
+ * Returns array of updated/created match IDs
  */
 export async function syncFromSportWrench(): Promise<number[]> {
   if (!sportWrenchEventId) {
@@ -142,65 +144,105 @@ export async function syncFromSportWrench(): Promise<number[]> {
     return [];
   }
 
-  // Create lookup map by match_id (this matches our external_match_id from CSV)
+  // Create lookup map by match_id (this matches our external_match_id)
   const swMatchMap = new Map<string, SportWrenchMatch>();
   for (const match of swMatches) {
     swMatchMap.set(match.match_id, match);
   }
-  console.log(`📋 SportWrench match_id lookup map created with ${swMatchMap.size} entries`);
+  console.log(`📋 SportWrench: ${swMatchMap.size} matches available`);
 
-  // Get local matches with external IDs
+  // Get ALL local matches with external IDs to create a lookup
   const localMatches = await getMatchesWithExternalId();
-  console.log(`📋 Found ${localMatches.length} local matches with external_match_id`);
+  const localMatchMap = new Map<string, Match>();
+  for (const match of localMatches) {
+    if (match.external_match_id) {
+      localMatchMap.set(match.external_match_id, match);
+    }
+  }
+  console.log(`📋 Local: ${localMatchMap.size} matches with external_match_id`);
   
-  const updatedMatchIds: number[] = [];
-  let checkedCount = 0;
+  const changedMatchIds: number[] = [];
+  let updatedCount = 0;
+  let createdCount = 0;
+  let courtChangedCount = 0;
 
-  // Compare and update
-  for (const localMatch of localMatches) {
-    if (!localMatch.external_match_id) continue;
+  // Process each SportWrench match
+  for (const [swMatchId, swMatch] of swMatchMap) {
+    const localMatch = localMatchMap.get(swMatchId);
     
-    const swMatch = swMatchMap.get(localMatch.external_match_id);
-    
-    if (!swMatch) {
-      // No match found - this is normal if the MatchID format doesn't match
-      continue;
-    }
+    if (localMatch) {
+      // Match exists locally - check for updates
+      const teamAChanged = localMatch.team_a !== swMatch.team_1_name;
+      const teamBChanged = localMatch.team_b !== swMatch.team_2_name;
+      const courtChanged = localMatch.court_id !== swMatch.court;
 
-    checkedCount++;
+      if (teamAChanged || teamBChanged || courtChanged) {
+        // Build update object
+        const updates: any = {};
+        
+        if (teamAChanged) {
+          updates.team_a = swMatch.team_1_name;
+          console.log(`📝 Match ${localMatch.id}: Team A "${localMatch.team_a}" → "${swMatch.team_1_name}"`);
+        }
+        if (teamBChanged) {
+          updates.team_b = swMatch.team_2_name;
+          console.log(`📝 Match ${localMatch.id}: Team B "${localMatch.team_b}" → "${swMatch.team_2_name}"`);
+        }
+        if (courtChanged) {
+          updates.court_id = swMatch.court;
+          console.log(`🔄 Match ${localMatch.id}: Court ${localMatch.court_id} → ${swMatch.court}`);
+          courtChangedCount++;
+        }
 
-    // Check if team names have changed
-    const teamAChanged = localMatch.team_a !== swMatch.team_1_name;
-    const teamBChanged = localMatch.team_b !== swMatch.team_2_name;
+        // Update the match
+        const { error } = await supabase
+          .from('matches')
+          .update(updates)
+          .eq('id', localMatch.id);
 
-    if (teamAChanged || teamBChanged) {
-      console.log(`📝 Updating match ${localMatch.id} (${localMatch.external_match_id}):`);
-      if (teamAChanged) {
-        console.log(`   Team A: "${localMatch.team_a}" → "${swMatch.team_1_name}"`);
+        if (!error) {
+          changedMatchIds.push(localMatch.id);
+          updatedCount++;
+        } else {
+          console.error(`❌ Failed to update match ${localMatch.id}:`, error);
+        }
       }
-      if (teamBChanged) {
-        console.log(`   Team B: "${localMatch.team_b}" → "${swMatch.team_2_name}"`);
-      }
+    } else {
+      // Match doesn't exist locally - create it
+      console.log(`➕ New match from SportWrench: ${swMatchId} on Court ${swMatch.court}`);
+      
+      const { data: newMatch, error } = await supabase
+        .from('matches')
+        .insert({
+          court_id: swMatch.court,
+          team_a: swMatch.team_1_name,
+          team_b: swMatch.team_2_name,
+          start_time: swMatch.date_time,
+          external_match_id: swMatch.match_id,
+          is_crossover: false,
+          is_completed: false,
+          sets_a: 0,
+          sets_b: 0
+        })
+        .select('id')
+        .single();
 
-      const success = await updateMatchTeamNames(
-        localMatch.id, 
-        swMatch.team_1_name, 
-        swMatch.team_2_name
-      );
-
-      if (success) {
-        updatedMatchIds.push(localMatch.id);
+      if (!error && newMatch) {
+        changedMatchIds.push(newMatch.id);
+        createdCount++;
+        console.log(`✅ Created match ${newMatch.id}: ${swMatch.team_1_name} vs ${swMatch.team_2_name}`);
+      } else {
+        console.error(`❌ Failed to create match ${swMatchId}:`, error);
       }
     }
   }
 
-  if (updatedMatchIds.length > 0) {
-    console.log(`✅ SportWrench sync complete: ${updatedMatchIds.length} matches updated (checked ${checkedCount})`);
-  } else {
-    console.log(`✅ SportWrench sync complete: No changes detected (checked ${checkedCount} matches)`);
-  }
+  console.log(`✅ SportWrench sync complete:`);
+  console.log(`   - Updated: ${updatedCount} matches`);
+  console.log(`   - Created: ${createdCount} new matches`);
+  console.log(`   - Court changes: ${courtChangedCount}`);
 
-  return updatedMatchIds;
+  return changedMatchIds;
 }
 
 /**
