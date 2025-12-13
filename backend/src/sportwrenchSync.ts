@@ -242,6 +242,20 @@ export async function syncFromSportWrench(): Promise<number[]> {
         continue; // Skip completed matches
       }
       
+      // EXTRA SAFETY: Double-check database directly before inserting to prevent duplicates
+      const { data: existingCheck } = await supabase
+        .from('matches')
+        .select('id')
+        .eq('external_match_id', swMatchId)
+        .maybeSingle();
+      
+      if (existingCheck) {
+        // Match already exists (was missed by initial query somehow)
+        console.log(`⚠️ Match ${swMatchId} already exists (id: ${existingCheck.id}), skipping duplicate`);
+        skippedExisting++;
+        continue;
+      }
+      
       console.log(`➕ New match from SportWrench: ${swMatchId} on Court ${swMatch.court}`);
       
       const { data: newMatch, error } = await supabase
@@ -263,6 +277,8 @@ export async function syncFromSportWrench(): Promise<number[]> {
       if (!error && newMatch) {
         changedMatchIds.push(newMatch.id);
         createdCount++;
+        // Add to local map to prevent duplicates within same sync cycle
+        localMatchMap.set(swMatchId, { id: newMatch.id, external_match_id: swMatchId } as Match);
         console.log(`✅ Created match ${newMatch.id}: ${swMatch.team_1_name} vs ${swMatch.team_2_name}`);
       } else {
         console.error(`❌ Failed to create match ${swMatchId}:`, error);
