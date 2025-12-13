@@ -841,6 +841,60 @@ router.post('/schedule/:courtId/update', async (req, res) => {
 });
 
 // Delete a match and shift later games up by 1 hour
+// Reorder match in schedule (move up or down)
+router.post('/schedule/:courtId/:matchId/reorder', async (req, res) => {
+  try {
+    const courtId = parseInt(req.params.courtId);
+    const matchId = parseInt(req.params.matchId);
+    const { direction } = req.body; // 'up' or 'down'
+    
+    if (!direction || (direction !== 'up' && direction !== 'down')) {
+      return res.status(400).json({ error: 'direction must be "up" or "down"' });
+    }
+    
+    // Get all matches for this court, ordered by start_time
+    const allMatches = await getAllMatchesForCourt(courtId);
+    const sortedMatches = allMatches.sort((a, b) => 
+      new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+    );
+    
+    // Find current match index
+    const currentIndex = sortedMatches.findIndex(m => m.id === matchId);
+    if (currentIndex === -1) {
+      return res.status(404).json({ error: 'Match not found on this court' });
+    }
+    
+    // Check if move is valid
+    if (direction === 'up' && currentIndex === 0) {
+      return res.status(400).json({ error: 'Match is already first' });
+    }
+    if (direction === 'down' && currentIndex === sortedMatches.length - 1) {
+      return res.status(400).json({ error: 'Match is already last' });
+    }
+    
+    // Get the match to swap with
+    const swapIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    const currentMatch = sortedMatches[currentIndex];
+    const swapMatch = sortedMatches[swapIndex];
+    
+    // Swap start_time values
+    const tempTime = currentMatch.start_time;
+    await updateMatch(currentMatch.id, { start_time: swapMatch.start_time });
+    await updateMatch(swapMatch.id, { start_time: tempTime });
+    
+    console.log(`🔄 Schedule: Moved match ${matchId} ${direction} on Court ${courtId}`);
+    
+    res.json({
+      success: true,
+      message: `Match moved ${direction}`,
+      newPosition: swapIndex
+    });
+  } catch (error) {
+    console.error('Error reordering match:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.delete('/schedule/:courtId/:matchId', async (req, res) => {
   try {
     const courtId = parseInt(req.params.courtId);

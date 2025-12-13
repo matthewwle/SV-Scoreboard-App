@@ -76,6 +76,7 @@ function AdminUI() {
   const [newGameTeamB, setNewGameTeamB] = useState('');
   const [addingGame, setAddingGame] = useState(false);
   const [togglingCrossoverId, setTogglingCrossoverId] = useState<number | null>(null);
+  const [reorderingGameId, setReorderingGameId] = useState<number | null>(null);
 
   // SportWrench settings state
   const [showSportWrenchSettings, setShowSportWrenchSettings] = useState(false);
@@ -678,6 +679,38 @@ function AdminUI() {
     }
   }
 
+  // Reorder match (move up or down in queue)
+  async function reorderMatch(gameId: number, direction: 'up' | 'down') {
+    if (!selectedCourtId) return;
+    
+    setReorderingGameId(gameId);
+    setScheduleError(null);
+    setScheduleSuccess(null);
+    
+    try {
+      const response = await fetch(`${API_URL}/api/schedule/${selectedCourtId}/${gameId}/reorder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ direction })
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to reorder match');
+      }
+      
+      setScheduleSuccess(`✅ Match moved ${direction}`);
+      // Reload schedule to show new order
+      loadSchedule(selectedCourtId);
+      
+      setTimeout(() => setScheduleSuccess(null), 3000);
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : 'Failed to reorder match');
+    } finally {
+      setReorderingGameId(null);
+    }
+  }
+
   // Toggle crossover status for a game
   async function toggleCrossover(gameId: number, currentValue: boolean) {
     setTogglingCrossoverId(gameId);
@@ -1246,7 +1279,7 @@ function AdminUI() {
                           <th className="py-3 px-4 text-left font-bold" style={{ color: '#DDFD51' }}>Team B</th>
                           <th className="py-3 px-4 text-center font-bold" style={{ color: '#DDFD51', width: '100px' }}>Crossover</th>
                           <th className="py-3 px-4 text-center font-bold" style={{ color: '#DDFD51', width: '80px' }}>Status</th>
-                          <th className="py-3 px-4 text-center font-bold" style={{ color: '#DDFD51', width: '180px' }}>Actions</th>
+                          <th className="py-3 px-4 text-center font-bold" style={{ color: '#DDFD51', width: '250px' }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1312,7 +1345,33 @@ function AdminUI() {
                               )}
                             </td>
                             <td className="py-3 px-4 text-center">
-                              <div className="flex gap-2 justify-center">
+                              <div className="flex gap-2 justify-center items-center">
+                                {/* Up Arrow */}
+                                <button
+                                  onClick={() => reorderMatch(game.id, 'up')}
+                                  disabled={reorderingGameId === game.id || scheduleGames.findIndex(g => g.id === game.id) === 0}
+                                  className="font-bold py-2 px-2 rounded-lg text-sm transition-opacity hover:opacity-80 disabled:opacity-30 disabled:cursor-not-allowed"
+                                  style={{ 
+                                    backgroundColor: scheduleGames.findIndex(g => g.id === game.id) === 0 ? '#666' : '#4a90d9', 
+                                    color: '#ffffff' 
+                                  }}
+                                  title="Move up in queue"
+                                >
+                                  ↑
+                                </button>
+                                {/* Down Arrow */}
+                                <button
+                                  onClick={() => reorderMatch(game.id, 'down')}
+                                  disabled={reorderingGameId === game.id || scheduleGames.findIndex(g => g.id === game.id) === scheduleGames.length - 1}
+                                  className="font-bold py-2 px-2 rounded-lg text-sm transition-opacity hover:opacity-80 disabled:opacity-30 disabled:cursor-not-allowed"
+                                  style={{ 
+                                    backgroundColor: scheduleGames.findIndex(g => g.id === game.id) === scheduleGames.length - 1 ? '#666' : '#4a90d9', 
+                                    color: '#ffffff' 
+                                  }}
+                                  title="Move down in queue"
+                                >
+                                  ↓
+                                </button>
                                 <button
                                   onClick={() => saveGame(game.id)}
                                   disabled={savingGameId === game.id || game.isCompleted}
