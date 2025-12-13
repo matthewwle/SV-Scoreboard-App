@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
+import { supabase } from './db';
 import {
   getCourt,
   getCurrentMatch,
@@ -906,8 +907,19 @@ router.delete('/schedule/:courtId/:matchId', async (req, res) => {
       return res.status(404).json({ error: 'Match not found on this court' });
     }
     
-    // Get all matches after this one (to shift times)
-    const laterMatches = await getMatchesAfter(courtId, matchId);
+    // Get all matches after this one in time (to shift times)
+    // Query by start_time to get matches that come after this match's time
+    const { data: laterMatches, error: fetchError } = await supabase
+      .from('matches')
+      .select('*')
+      .eq('court_id', courtId)
+      .gt('start_time', matchToDelete.start_time)
+      .order('start_time', { ascending: true });
+    
+    if (fetchError) {
+      console.error('Error fetching later matches:', fetchError);
+      return res.status(500).json({ error: 'Failed to fetch later matches' });
+    }
     
     // Delete the match
     const deleted = await deleteMatch(matchId);

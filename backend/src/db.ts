@@ -341,7 +341,7 @@ export async function getAllMatchesForCourt(courtId: number): Promise<Match[]> {
     .from('matches')
     .select('*')
     .eq('court_id', courtId)
-    .order('id', { ascending: true });  // Order by ID (upload order)
+    .order('start_time', { ascending: true });  // Order by start_time to maintain schedule order
   
   if (error) {
     console.error('Error fetching all matches for court:', error);
@@ -389,15 +389,11 @@ export async function getLastMatchForCourt(courtId: number): Promise<Match | nul
     .from('matches')
     .select('*')
     .eq('court_id', courtId)
-    .order('id', { ascending: false })
+    .order('start_time', { ascending: false })  // Order by start_time to get the latest scheduled match
     .limit(1)
-    .single();
+    .maybeSingle();
   
   if (error) {
-    if (error.code === 'PGRST116') {
-      // No matches found - not an error
-      return null;
-    }
     console.error('Error fetching last match:', error);
     return null;
   }
