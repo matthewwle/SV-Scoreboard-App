@@ -33,7 +33,7 @@ interface SportWrenchMatch {
 }
 
 // Configuration
-const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes - polling interval for SportWrench sync
 
 // In-memory storage for SportWrench Event ID
 let sportWrenchEventId: string | null = null;
