@@ -907,42 +907,18 @@ router.delete('/schedule/:courtId/:matchId', async (req, res) => {
       return res.status(404).json({ error: 'Match not found on this court' });
     }
     
-    // Get all matches after this one in time (to shift times)
-    // Query by start_time to get matches that come after this match's time
-    const { data: laterMatches, error: fetchError } = await supabase
-      .from('matches')
-      .select('*')
-      .eq('court_id', courtId)
-      .gt('start_time', matchToDelete.start_time)
-      .order('start_time', { ascending: true });
-    
-    if (fetchError) {
-      console.error('Error fetching later matches:', fetchError);
-      return res.status(500).json({ error: 'Failed to fetch later matches' });
-    }
-    
-    // Delete the match
+    // Simply delete the match - no time shifting
+    // This leaves a "hole" in the schedule which is intentional
     const deleted = await deleteMatch(matchId);
     if (!deleted) {
       return res.status(500).json({ error: 'Failed to delete match' });
     }
     
-    // Shift later matches up by the deleted match's duration
-    // Crossover = 30 minutes, Normal = 60 minutes
-    const minutesToShift = matchToDelete.is_crossover ? 30 : 60;
-    
-    for (const match of laterMatches) {
-      // Subtract the duration from each later match's start time
-      const newStartTime = addTimeToTimeString(match.start_time, -minutesToShift);
-      await updateMatch(match.id, { start_time: newStartTime });
-    }
-    
-    console.log(`🗑️ Schedule: Deleted match ${matchId} on Court ${courtId}, shifted ${laterMatches.length} later games`);
+    console.log(`🗑️ Schedule: Deleted match ${matchId} on Court ${courtId}`);
     
     res.json({
       success: true,
-      message: 'Game deleted',
-      gamesShifted: laterMatches.length
+      message: 'Game deleted'
     });
   } catch (error) {
     console.error('Error deleting from schedule:', error);
