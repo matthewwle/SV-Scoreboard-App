@@ -7,16 +7,27 @@ import { Match } from '../types';
 function OverlayUI() {
   const { courtId } = useParams<{ courtId: string }>();
   const courtIdNum = courtId ? parseInt(courtId) : null;
-  const { scoreState } = useSocket(courtIdNum);
+  
+  // Get tournament_id from URL query param
+  const [tournamentId, setTournamentId] = useState<number | null>(null);
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tId = urlParams.get('tournamentId');
+    if (tId) {
+      setTournamentId(parseInt(tId));
+    }
+  }, []);
+  
+  const { scoreState } = useSocket(courtIdNum, tournamentId);
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
   const [tournamentLabel, setTournamentLabel] = useState('Winter Formal');
 
   useEffect(() => {
-    if (!courtIdNum) return;
+    if (!courtIdNum || !tournamentId) return;
 
     async function loadMatch() {
       try {
-        const response = await fetch(`${API_URL}/api/court/${courtIdNum}/currentMatch`);
+        const response = await fetch(`${API_URL}/api/court/${courtIdNum}/currentMatch?tournamentId=${tournamentId}`);
         if (response.ok) {
           const match = await response.json();
           setCurrentMatch(match);
@@ -27,13 +38,14 @@ function OverlayUI() {
     }
 
     loadMatch();
-  }, [courtIdNum]);
+  }, [courtIdNum, tournamentId]);
 
   // Fetch tournament label
   useEffect(() => {
+    if (!tournamentId) return;
     async function fetchTournamentLabel() {
       try {
-        const response = await fetch(`${API_URL}/api/settings/tournamentLabel`);
+        const response = await fetch(`${API_URL}/api/settings/tournamentLabel?tournamentId=${tournamentId}`);
         if (response.ok) {
           const data = await response.json();
           setTournamentLabel(data.label || 'Winter Formal');
@@ -46,7 +58,7 @@ function OverlayUI() {
     // Refresh every 30 seconds in case it's changed
     const interval = setInterval(fetchTournamentLabel, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [tournamentId]);
 
   return (
     <div style={{ transform: 'scale(0.36)', transformOrigin: 'top left', width: '278vw', height: '278vh' }}>

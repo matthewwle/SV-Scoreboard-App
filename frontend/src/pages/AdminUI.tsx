@@ -450,8 +450,9 @@ function AdminUI() {
 
   // Load tournament label from API
   async function loadTournamentLabel() {
+    if (!selectedTournament) return;
     try {
-      const response = await fetch(`${API_URL}/api/settings/tournamentLabel`);
+      const response = await fetch(`${API_URL}/api/settings/tournamentLabel${getTournamentQuery()}`);
       if (response.ok) {
         const data = await response.json();
         setTournamentLabel(data.label || 'Winter Formal');
@@ -463,14 +464,15 @@ function AdminUI() {
 
   // Save tournament label to API
   async function saveTournamentLabel() {
+    if (!selectedTournament) return;
     setSavingLabel(true);
     setLabelSuccess(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/settings/tournamentLabel`, {
+      const response = await fetch(`${API_URL}/api/settings/tournamentLabel${getTournamentQuery()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: labelInput })
+        body: JSON.stringify({ label: labelInput, tournamentId: selectedTournament.id })
       });
 
       if (!response.ok) {
@@ -506,8 +508,9 @@ function AdminUI() {
 
   // Load SportWrench Event ID from API
   async function loadSportWrenchEventId() {
+    if (!selectedTournament) return;
     try {
-      const response = await fetch(`${API_URL}/api/settings/sportwrenchEventId`);
+      const response = await fetch(`${API_URL}/api/settings/sportwrenchEventId${getTournamentQuery()}`);
       if (response.ok) {
         const data = await response.json();
         setSportWrenchEventId(data.eventId || '');
@@ -520,15 +523,16 @@ function AdminUI() {
 
   // Save SportWrench Event ID
   async function saveSportWrenchEventId() {
+    if (!selectedTournament) return;
     setSavingSportWrench(true);
     setSportWrenchSuccess(null);
     setSportWrenchError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/settings/sportwrenchEventId`, {
+      const response = await fetch(`${API_URL}/api/settings/sportwrenchEventId${getTournamentQuery()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: sportWrenchInput.trim() })
+        body: JSON.stringify({ eventId: sportWrenchInput.trim(), tournamentId: selectedTournament.id })
       });
 
       const data = await response.json();
@@ -550,14 +554,16 @@ function AdminUI() {
 
   // Manually trigger SportWrench sync
   async function triggerSportWrenchSync() {
+    if (!selectedTournament) return;
     setSyncingSportWrench(true);
     setLastSyncResult(null);
     setSportWrenchError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/settings/sportwrenchSync`, {
+      const response = await fetch(`${API_URL}/api/settings/sportwrenchSync${getTournamentQuery()}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tournamentId: selectedTournament.id })
       });
 
       const data = await response.json();
@@ -593,6 +599,10 @@ function AdminUI() {
 
   // Import matches from SportWrench
   async function importFromSportWrench() {
+    if (!selectedTournament) {
+      setSportWrenchError('Please select a tournament first');
+      return;
+    }
     if (!sportWrenchEventId) {
       setSportWrenchError('Please save an Event ID first (click Save button after entering the ID)');
       return;
@@ -611,13 +621,14 @@ function AdminUI() {
     console.log(`Importing from Event ID: ${sportWrenchEventId}, Courts: ${importCourtMin}-${importCourtMax}`);
 
     try {
-      const response = await fetch(`${API_URL}/api/schedule/import-from-sportwrench`, {
+      const response = await fetch(`${API_URL}/api/schedule/import-from-sportwrench${getTournamentQuery()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           eventId: sportWrenchEventId,
           courtMin: importCourtMin,
-          courtMax: importCourtMax
+          courtMax: importCourtMax,
+          tournamentId: selectedTournament.id
         })
       });
 
@@ -676,10 +687,13 @@ function AdminUI() {
         return;
       }
 
-      const response = await fetch(`${API_URL}/api/schedule/upload-crossover-mapping`, {
+      const response = await fetch(`${API_URL}/api/schedule/upload-crossover-mapping${getTournamentQuery()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mappings })
+        body: JSON.stringify({ 
+          mappings,
+          tournamentId: selectedTournament?.id 
+        })
       });
 
       const data = await response.json();
