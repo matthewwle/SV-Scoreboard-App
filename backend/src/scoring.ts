@@ -45,6 +45,7 @@ async function buildScorePayload(courtId: number, match: Match, scoreState: Scor
   
   return {
     courtId,
+    tournamentId: match.tournament_id,
     matchId: match.id,
     teamA: match.team_a,
     teamB: match.team_b,
@@ -62,14 +63,14 @@ async function buildScorePayload(courtId: number, match: Match, scoreState: Scor
 
 // Broadcast score update via WebSocket and Redis
 async function broadcastScoreUpdate(payload: ScoreUpdatePayload): Promise<void> {
-  const { courtId } = payload;
+  const { courtId, tournamentId } = payload;
   
   // Cache the score state
   await cacheScoreState(courtId, payload);
   
   // Broadcast via Socket.IO (only if initialized)
   if (io) {
-    io.to(`court_${courtId}`).emit('score:update', payload);
+    io.to(`court_${courtId}_tournament_${tournamentId}`).emit('score:update', payload);
   }
   
   // Publish to Redis for multi-instance sync
@@ -82,8 +83,8 @@ export async function broadcastScoreToClients(payload: ScoreUpdatePayload): Prom
 }
 
 // Increment score for a team
-export async function incrementScore(courtId: number, team: 'A' | 'B'): Promise<ScoreUpdatePayload | null> {
-  const match = await getCurrentMatch(courtId);
+export async function incrementScore(courtId: number, tournamentId: number, team: 'A' | 'B'): Promise<ScoreUpdatePayload | null> {
+  const match = await getCurrentMatch(courtId, tournamentId);
   if (!match) return null;
 
   let scoreState = await getScoreState(match.id);
@@ -118,8 +119,8 @@ export async function incrementScore(courtId: number, team: 'A' | 'B'): Promise<
 }
 
 // Confirm set win and advance to next set
-export async function confirmSetWin(courtId: number): Promise<ScoreUpdatePayload | null> {
-  const match = await getCurrentMatch(courtId);
+export async function confirmSetWin(courtId: number, tournamentId: number): Promise<ScoreUpdatePayload | null> {
+  const match = await getCurrentMatch(courtId, tournamentId);
   if (!match) return null;
 
   const scoreState = await getScoreState(match.id);
@@ -183,8 +184,8 @@ export async function confirmSetWin(courtId: number): Promise<ScoreUpdatePayload
 }
 
 // Decrement score for a team
-export async function decrementScore(courtId: number, team: 'A' | 'B'): Promise<ScoreUpdatePayload | null> {
-  const match = await getCurrentMatch(courtId);
+export async function decrementScore(courtId: number, tournamentId: number, team: 'A' | 'B'): Promise<ScoreUpdatePayload | null> {
+  const match = await getCurrentMatch(courtId, tournamentId);
   if (!match) return null;
 
   const scoreState = await getScoreState(match.id);
@@ -211,8 +212,8 @@ export async function decrementScore(courtId: number, team: 'A' | 'B'): Promise<
 }
 
 // Reset current set scores to 0-0
-export async function resetSet(courtId: number): Promise<ScoreUpdatePayload | null> {
-  const match = await getCurrentMatch(courtId);
+export async function resetSet(courtId: number, tournamentId: number): Promise<ScoreUpdatePayload | null> {
+  const match = await getCurrentMatch(courtId, tournamentId);
   if (!match) return null;
 
   const scoreState = await getScoreState(match.id);
@@ -230,8 +231,8 @@ export async function resetSet(courtId: number): Promise<ScoreUpdatePayload | nu
 }
 
 // Swap team sides (swap team names and scores)
-export async function swapSides(courtId: number): Promise<ScoreUpdatePayload | null> {
-  const match = await getCurrentMatch(courtId);
+export async function swapSides(courtId: number, tournamentId: number): Promise<ScoreUpdatePayload | null> {
+  const match = await getCurrentMatch(courtId, tournamentId);
   if (!match) return null;
 
   const scoreState = await getScoreState(match.id);
@@ -268,8 +269,8 @@ export async function swapSides(courtId: number): Promise<ScoreUpdatePayload | n
 }
 
 // Get current score state for a court
-export async function getCurrentScoreState(courtId: number): Promise<ScoreUpdatePayload | null> {
-  const match = await getCurrentMatch(courtId);
+export async function getCurrentScoreState(courtId: number, tournamentId: number): Promise<ScoreUpdatePayload | null> {
+  const match = await getCurrentMatch(courtId, tournamentId);
   if (!match) return null;
 
   let scoreState = await getScoreState(match.id);

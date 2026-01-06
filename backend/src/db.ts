@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Court, Match, ScoreState, MatchLog } from './types';
+import { Tournament, Court, Match, ScoreState, MatchLog } from './types';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -16,12 +16,89 @@ if (!supabaseUrl || !supabaseKey) {
 
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
 
+// Tournament operations
+export async function getAllTournaments(): Promise<Tournament[]> {
+  const { data, error } = await supabase
+    .from('tournaments')
+    .select('*')
+    .order('created_at', { ascending: false });
+  
+  if (error) {
+    console.error('Error fetching tournaments:', error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function getTournament(id: number): Promise<Tournament | null> {
+  const { data, error } = await supabase
+    .from('tournaments')
+    .select('*')
+    .eq('id', id)
+    .single();
+  
+  if (error) {
+    console.error('Error fetching tournament:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function createTournament(name: string): Promise<Tournament | null> {
+  const { data, error } = await supabase
+    .from('tournaments')
+    .insert({ name })
+    .select()
+    .single();
+  
+  if (error) {
+    console.error('Error creating tournament:', error);
+    return null;
+  }
+  
+  // Create 70 courts for this tournament
+  const courts = [];
+  for (let i = 1; i <= 70; i++) {
+    courts.push({
+      id: i,
+      name: `Court ${i}`,
+      tournament_id: data.id,
+      current_match_id: null
+    });
+  }
+  
+  const { error: courtsError } = await supabase
+    .from('courts')
+    .insert(courts);
+  
+  if (courtsError) {
+    console.error('Error creating courts for tournament:', courtsError);
+  }
+  
+  return data;
+}
+
+export async function deleteTournament(id: number): Promise<boolean> {
+  // Cascade delete will handle courts, matches, etc.
+  const { error } = await supabase
+    .from('tournaments')
+    .delete()
+    .eq('id', id);
+  
+  if (error) {
+    console.error('Error deleting tournament:', error);
+    return false;
+  }
+  return true;
+}
+
 // Court operations
-export async function getCourt(id: number): Promise<Court | null> {
+export async function getCourt(id: number, tournamentId: number): Promise<Court | null> {
   const { data, error } = await supabase
     .from('courts')
     .select('*')
     .eq('id', id)
+    .eq('tournament_id', tournamentId)
     .single();
   
   if (error) {
@@ -31,10 +108,11 @@ export async function getCourt(id: number): Promise<Court | null> {
   return data;
 }
 
-export async function getAllCourts(): Promise<Court[]> {
+export async function getAllCourts(tournamentId: number): Promise<Court[]> {
   const { data, error } = await supabase
     .from('courts')
     .select('*')
+    .eq('tournament_id', tournamentId)
     .order('id');
   
   if (error) {
@@ -59,8 +137,8 @@ export async function getMatch(id: number): Promise<Match | null> {
   return data;
 }
 
-export async function getCurrentMatch(courtId: number): Promise<Match | null> {
-  const court = await getCourt(courtId);
+export async function getCurrentMatch(courtId: number, tournamentId: number): Promise<Match | null> {
+  const court = await getCourt(courtId, tournamentId);
   if (!court || !court.current_match_id) return null;
   
   return getMatch(court.current_match_id);
@@ -143,11 +221,12 @@ export async function upsertScoreState(scoreState: Omit<ScoreState, 'id' | 'upda
   return data;
 }
 
-export async function updateCourtMatch(courtId: number, matchId: number | null): Promise<Court | null> {
+export async function updateCourtMatch(courtId: number, tournamentId: number, matchId: number | null): Promise<Court | null> {
   const { data, error } = await supabase
     .from('courts')
     .update({ current_match_id: matchId })
     .eq('id', courtId)
+    .eq('tournament_id', tournamentId)
     .select()
     .single();
   
@@ -160,13 +239,15 @@ export async function updateCourtMatch(courtId: number, matchId: number | null):
 
 // Update court's Larix device ID
 export async function updateCourtLarixDeviceId(
-  courtId: number, 
+  courtId: number,
+  tournamentId: number,
   deviceId: string | null
 ): Promise<Court | null> {
   const { data, error } = await supabase
     .from('courts')
     .update({ larix_device_id: deviceId })
     .eq('id', courtId)
+    .eq('tournament_id', tournamentId)
     .select()
     .single();
   
@@ -235,11 +316,12 @@ export async function deleteAllMatches(): Promise<void> {
 }
 
 // Get upcoming matches for a court (not completed, ordered by id ascending)
-export async function getUpcomingMatches(courtId: number, limit: number = 5): Promise<Match[]> {
+export async function getUpcomingMatches(courtId: number, tournamentId: number, limit: number = 5): Promise<Match[]> {
   const { data, error} = await supabase
     .from('matches')
     .select('*')
     .eq('court_id', courtId)
+    .eq('tournament_id', tournamentId)
     .eq('is_completed', false)
     .order('id', { ascending: true })  // Order by ID (matches uploaded first = played first)
     .limit(limit);
@@ -253,8 +335,8 @@ export async function getUpcomingMatches(courtId: number, limit: number = 5): Pr
 }
 
 // Get the next available match for a court (first uncompleted match)
-export async function getNextMatch(courtId: number): Promise<Match | null> {
-  const matches = await getUpcomingMatches(courtId, 1);
+export async function getNextMatch(courtId: number, tournamentId: number): Promise<Match | null> {
+  const matches = await getUpcomingMatches(courtId, tournamentId, 1);
   return matches.length > 0 ? matches[0] : null;
 }
 
@@ -278,10 +360,11 @@ export async function initializeCourts(count: number = 70): Promise<void> {
 }
 
 // Match Log operations
-export async function createMatchLog(courtId: number, matchId: number, teamA: string, teamB: string): Promise<MatchLog | null> {
+export async function createMatchLog(courtId: number, matchId: number, tournamentId: number, teamA: string, teamB: string): Promise<MatchLog | null> {
   const matchLog: Omit<MatchLog, 'id' | 'created_at'> = {
     court_id: courtId,
     match_id: matchId,
+    tournament_id: tournamentId,
     team_a: teamA,
     team_b: teamB,
     start_time: new Date().toISOString(),
@@ -336,11 +419,12 @@ export async function getAllMatchLogs(): Promise<MatchLog[]> {
 }
 
 // Schedule Editor: Get ALL matches for a court (including completed)
-export async function getAllMatchesForCourt(courtId: number): Promise<Match[]> {
+export async function getAllMatchesForCourt(courtId: number, tournamentId: number): Promise<Match[]> {
   const { data, error } = await supabase
     .from('matches')
     .select('*')
     .eq('court_id', courtId)
+    .eq('tournament_id', tournamentId)
     .order('start_time', { ascending: true });  // Order by start_time to maintain schedule order
   
   if (error) {
@@ -367,11 +451,12 @@ export async function deleteMatch(matchId: number): Promise<boolean> {
 }
 
 // Schedule Editor: Get matches after a specific match (for time shifting)
-export async function getMatchesAfter(courtId: number, afterMatchId: number): Promise<Match[]> {
+export async function getMatchesAfter(courtId: number, tournamentId: number, afterMatchId: number): Promise<Match[]> {
   const { data, error } = await supabase
     .from('matches')
     .select('*')
     .eq('court_id', courtId)
+    .eq('tournament_id', tournamentId)
     .gt('id', afterMatchId)
     .order('id', { ascending: true });
   
@@ -384,11 +469,12 @@ export async function getMatchesAfter(courtId: number, afterMatchId: number): Pr
 }
 
 // Schedule Editor: Get the last match for a court (for adding new games)
-export async function getLastMatchForCourt(courtId: number): Promise<Match | null> {
+export async function getLastMatchForCourt(courtId: number, tournamentId: number): Promise<Match | null> {
   const { data, error } = await supabase
     .from('matches')
     .select('*')
     .eq('court_id', courtId)
+    .eq('tournament_id', tournamentId)
     .order('start_time', { ascending: false })  // Order by start_time to get the latest scheduled match
     .limit(1)
     .maybeSingle();

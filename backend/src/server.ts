@@ -78,8 +78,18 @@ io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
   // Join a court room
-  socket.on('joinCourt', async (courtId: number) => {
-    const room = `court_${courtId}`;
+  socket.on('joinCourt', async (data: { courtId: number; tournamentId: number } | number) => {
+    // Handle both old format (just courtId) and new format (object with courtId and tournamentId)
+    const courtId = typeof data === 'number' ? data : data.courtId;
+    const tournamentId = typeof data === 'number' ? null : data.tournamentId;
+    
+    if (!tournamentId) {
+      console.warn(`Client ${socket.id} joined court ${courtId} without tournamentId - score state may not load`);
+      socket.emit('error', { message: 'tournamentId is required' });
+      return;
+    }
+    
+    const room = `court_${courtId}_tournament_${tournamentId}`;
     socket.join(room);
     console.log(`Client ${socket.id} joined ${room}`);
 
@@ -90,7 +100,7 @@ io.on('connection', (socket) => {
       
       // If not in cache, get from database
       if (!scoreState) {
-        scoreState = await getCurrentScoreState(courtId);
+        scoreState = await getCurrentScoreState(courtId, tournamentId);
       }
 
       if (scoreState) {

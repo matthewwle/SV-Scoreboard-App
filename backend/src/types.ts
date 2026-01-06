@@ -1,9 +1,17 @@
 // Database Models
+export interface Tournament {
+  id: number;
+  name: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Court {
   id: number;
   name: string;
   current_match_id: number | null;
   larix_device_id?: string | null;
+  tournament_id: number;
   created_at?: string;
 }
 
@@ -18,6 +26,7 @@ export interface Match {
   is_completed: boolean;
   external_match_id?: string | null;  // MatchID from spreadsheet
   is_crossover?: boolean;  // Crossover match = 1 set only (Y/N in CSV)
+  tournament_id: number;
   created_at?: string;
 }
 
@@ -39,6 +48,7 @@ export interface MatchLog {
   team_b: string;
   start_time: string | null;
   end_time: string | null;
+  tournament_id: number;
   created_at?: string;
 }
 
@@ -50,6 +60,7 @@ export interface SetScore {
 
 export interface ScoreUpdatePayload {
   courtId: number;
+  tournamentId: number;
   matchId: number;
   teamA: string;
   teamB: string;

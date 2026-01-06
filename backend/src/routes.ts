@@ -3,6 +3,10 @@ import multer from 'multer';
 import * as XLSX from 'xlsx';
 import { supabase } from './db';
 import {
+  getAllTournaments,
+  getTournament,
+  createTournament,
+  deleteTournament,
   getCourt,
   getCurrentMatch,
   getAllCourts,
@@ -38,11 +42,81 @@ import { UploadScheduleRow } from './types';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
+// Helper to extract tournament_id from request (query param or body)
+function getTournamentId(req: any): number | null {
+  const tournamentId = req.query.tournamentId || req.body.tournamentId;
+  if (!tournamentId) return null;
+  const id = parseInt(tournamentId);
+  return isNaN(id) ? null : id;
+}
+
+// Tournament APIs
+router.get('/tournaments', async (req, res) => {
+  try {
+    const tournaments = await getAllTournaments();
+    res.json(tournaments);
+  } catch (error) {
+    console.error('Error fetching tournaments:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/tournaments/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const tournament = await getTournament(id);
+    if (!tournament) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+    res.json(tournament);
+  } catch (error) {
+    console.error('Error fetching tournament:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/tournaments', async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Tournament name is required' });
+    }
+    const tournament = await createTournament(name.trim());
+    if (!tournament) {
+      return res.status(500).json({ error: 'Failed to create tournament' });
+    }
+    res.json(tournament);
+  } catch (error) {
+    console.error('Error creating tournament:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.delete('/tournaments/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const success = await deleteTournament(id);
+    if (!success) {
+      return res.status(500).json({ error: 'Failed to delete tournament' });
+    }
+    res.json({ success: true, message: 'Tournament deleted' });
+  } catch (error) {
+    console.error('Error deleting tournament:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Court APIs
 router.get('/court/:id', async (req, res) => {
   try {
     const courtId = parseInt(req.params.id);
-    const court = await getCourt(courtId);
+    const tournamentId = parseInt(req.query.tournamentId as string);
+    
+    if (!tournamentId || isNaN(tournamentId)) {
+      return res.status(400).json({ error: 'tournamentId query parameter is required' });
+    }
+    
+    const court = await getCourt(courtId, tournamentId);
     
     if (!court) {
       return res.status(404).json({ error: 'Court not found' });
@@ -58,7 +132,11 @@ router.get('/court/:id', async (req, res) => {
 router.get('/court/:id/currentMatch', async (req, res) => {
   try {
     const courtId = parseInt(req.params.id);
-    const match = await getCurrentMatch(courtId);
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId is required' });
+    }
+    const match = await getCurrentMatch(courtId, tournamentId);
     
     if (!match) {
       return res.status(404).json({ error: 'No current match for this court' });
@@ -73,7 +151,11 @@ router.get('/court/:id/currentMatch', async (req, res) => {
 
 router.get('/courts', async (req, res) => {
   try {
-    const courts = await getAllCourts();
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId query parameter is required' });
+    }
+    const courts = await getAllCourts(tournamentId);
     res.json(courts);
   } catch (error) {
     console.error('Error fetching courts:', error);
@@ -84,8 +166,12 @@ router.get('/courts', async (req, res) => {
 router.get('/court/:id/upcomingMatches', async (req, res) => {
   try {
     const courtId = parseInt(req.params.id);
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId query parameter is required' });
+    }
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
-    const matches = await getUpcomingMatches(courtId, limit);
+    const matches = await getUpcomingMatches(courtId, tournamentId, limit);
     res.json(matches);
   } catch (error) {
     console.error('Error fetching upcoming matches:', error);
@@ -96,9 +182,13 @@ router.get('/court/:id/upcomingMatches', async (req, res) => {
 router.post('/court/:id/advanceToNextMatch', async (req, res) => {
   try {
     const courtId = parseInt(req.params.id);
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId is required in request body or query' });
+    }
     
     // Check if there's already an active (non-completed) match in progress
-    const currentMatch = await getCurrentMatch(courtId);
+    const currentMatch = await getCurrentMatch(courtId, tournamentId);
     if (currentMatch && !currentMatch.is_completed) {
       // A match is already in progress - don't start a new one
       // Return the current match info instead
@@ -115,7 +205,7 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
       await updateMatch(currentMatch.id, { is_completed: true });
     }
     
-    const nextMatch = await getNextMatch(courtId);
+    const nextMatch = await getNextMatch(courtId, tournamentId);
     
     if (!nextMatch) {
       return res.status(404).json({ error: 'No upcoming matches for this court' });
@@ -128,14 +218,14 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
     const scoreState = await initializeScoreState(nextMatch.id);
     
     // Update the court to use the next match
-    await updateCourtMatch(courtId, nextMatch.id);
+    await updateCourtMatch(courtId, tournamentId, nextMatch.id);
     
     // 🆕 LOG MATCH START - Create a match log when starting to score the next match
-    await createMatchLog(courtId, nextMatch.id, nextMatch.team_a, nextMatch.team_b);
+    await createMatchLog(courtId, nextMatch.id, tournamentId, nextMatch.team_a, nextMatch.team_b);
     
     // 🎥 START LARIX RECORDING - Trigger Larix to start recording
     let larixStartResult: { success: boolean; message?: string } = { success: false, message: 'Not configured' };
-    const court = await getCourt(courtId);
+    const court = await getCourt(courtId, tournamentId);
     if (court?.larix_device_id) {
       const { startRecording } = await import('./larixClient');
       larixStartResult = await startRecording(courtId, nextMatch.id, court.larix_device_id);
@@ -158,6 +248,7 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
     if (updatedMatch && scoreState) {
       const payload = {
         courtId,
+        tournamentId,
         matchId: updatedMatch.id,
         teamA: updatedMatch.team_a,
         teamB: updatedMatch.team_b,
@@ -190,7 +281,11 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
 router.post('/court/:id/resetCourtAssignment', async (req, res) => {
   try {
     const courtId = parseInt(req.params.id);
-    const court = await updateCourtMatch(courtId, null);
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId is required' });
+    }
+    const court = await updateCourtMatch(courtId, tournamentId, null);
     
     if (!court) {
       return res.status(404).json({ error: 'Court not found' });
@@ -206,6 +301,10 @@ router.post('/court/:id/resetCourtAssignment', async (req, res) => {
 router.post('/court/:id/overrideMatch', async (req, res) => {
   try {
     const courtId = parseInt(req.params.id);
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId is required' });
+    }
     const { matchId } = req.body;
     
     // Verify match exists
@@ -214,7 +313,7 @@ router.post('/court/:id/overrideMatch', async (req, res) => {
       return res.status(404).json({ error: 'Match not found' });
     }
     
-    const court = await updateCourtMatch(courtId, matchId);
+    const court = await updateCourtMatch(courtId, tournamentId, matchId);
     
     if (!court) {
       return res.status(404).json({ error: 'Court not found' });
@@ -231,14 +330,14 @@ router.post('/court/:id/overrideMatch', async (req, res) => {
 router.post('/score/increment', async (req, res) => {
   try {
     console.log('Increment request received:', req.body);
-    const { courtId, team } = req.body;
+    const { courtId, team, tournamentId } = req.body;
     
-    if (!courtId || !team || !['A', 'B'].includes(team)) {
-      return res.status(400).json({ error: 'Invalid request' });
+    if (!courtId || !team || !['A', 'B'].includes(team) || !tournamentId) {
+      return res.status(400).json({ error: 'Invalid request - courtId, team, and tournamentId are required' });
     }
     
-    console.log(`Calling incrementScore for court ${courtId}, team ${team}`);
-    const payload = await incrementScore(courtId, team);
+    console.log(`Calling incrementScore for court ${courtId}, team ${team}, tournament ${tournamentId}`);
+    const payload = await incrementScore(courtId, tournamentId, team);
     console.log('incrementScore completed, payload:', payload);
     
     if (!payload) {
@@ -254,13 +353,13 @@ router.post('/score/increment', async (req, res) => {
 
 router.post('/score/decrement', async (req, res) => {
   try {
-    const { courtId, team } = req.body;
+    const { courtId, team, tournamentId } = req.body;
     
-    if (!courtId || !team || !['A', 'B'].includes(team)) {
-      return res.status(400).json({ error: 'Invalid request' });
+    if (!courtId || !team || !['A', 'B'].includes(team) || !tournamentId) {
+      return res.status(400).json({ error: 'Invalid request - courtId, team, and tournamentId are required' });
     }
     
-    const payload = await decrementScore(courtId, team);
+    const payload = await decrementScore(courtId, tournamentId, team);
     
     if (!payload) {
       return res.status(404).json({ error: 'Match not found' });
@@ -275,13 +374,13 @@ router.post('/score/decrement', async (req, res) => {
 
 router.post('/score/resetSet', async (req, res) => {
   try {
-    const { courtId } = req.body;
+    const { courtId, tournamentId } = req.body;
     
-    if (!courtId) {
-      return res.status(400).json({ error: 'Invalid request' });
+    if (!courtId || !tournamentId) {
+      return res.status(400).json({ error: 'Invalid request - courtId and tournamentId are required' });
     }
     
-    const payload = await resetSet(courtId);
+    const payload = await resetSet(courtId, tournamentId);
     
     if (!payload) {
       return res.status(404).json({ error: 'Match not found' });
@@ -296,13 +395,13 @@ router.post('/score/resetSet', async (req, res) => {
 
 router.post('/score/swapSides', async (req, res) => {
   try {
-    const { courtId } = req.body;
+    const { courtId, tournamentId } = req.body;
     
-    if (!courtId) {
-      return res.status(400).json({ error: 'Invalid request' });
+    if (!courtId || !tournamentId) {
+      return res.status(400).json({ error: 'Invalid request - courtId and tournamentId are required' });
     }
     
-    const payload = await swapSides(courtId);
+    const payload = await swapSides(courtId, tournamentId);
     
     if (!payload) {
       return res.status(404).json({ error: 'Match not found' });
@@ -317,13 +416,13 @@ router.post('/score/swapSides', async (req, res) => {
 
 router.post('/score/confirmSetWin', async (req, res) => {
   try {
-    const { courtId } = req.body;
+    const { courtId, tournamentId } = req.body;
     
-    if (!courtId) {
-      return res.status(400).json({ error: 'Invalid request' });
+    if (!courtId || !tournamentId) {
+      return res.status(400).json({ error: 'Invalid request - courtId and tournamentId are required' });
     }
     
-    const payload = await confirmSetWin(courtId);
+    const payload = await confirmSetWin(courtId, tournamentId);
     
     if (!payload) {
       return res.status(404).json({ error: 'No set win to confirm' });
@@ -339,7 +438,11 @@ router.post('/score/confirmSetWin', async (req, res) => {
 router.get('/score/current/:courtId', async (req, res) => {
   try {
     const courtId = parseInt(req.params.courtId);
-    const payload = await getCurrentScoreState(courtId);
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId query parameter is required' });
+    }
+    const payload = await getCurrentScoreState(courtId, tournamentId);
     
     if (!payload) {
       return res.status(404).json({ error: 'Match not found' });
@@ -370,15 +473,26 @@ router.post('/admin/uploadSchedule', upload.single('file'), async (req, res) => 
       return res.status(400).json({ error: 'No file uploaded' });
     }
     
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId is required' });
+    }
+    
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
     const rows: UploadScheduleRow[] = XLSX.utils.sheet_to_json(sheet);
     
-    // Clear ALL existing matches before uploading new schedule
-    console.log(`🗑️ Clearing ALL existing matches before upload...`);
-    await deleteAllMatches();
-    console.log(`✅ All matches cleared`);
+    // Clear ALL existing matches for this tournament before uploading new schedule
+    console.log(`🗑️ Clearing ALL existing matches for tournament ${tournamentId} before upload...`);
+    const { error: deleteError } = await supabase
+      .from('matches')
+      .delete()
+      .eq('tournament_id', tournamentId);
+    if (deleteError) {
+      console.error('Error clearing matches:', deleteError);
+    }
+    console.log(`✅ All matches cleared for tournament ${tournamentId}`);
     
     const createdMatches = [];
     
@@ -388,6 +502,7 @@ router.post('/admin/uploadSchedule', upload.single('file'), async (req, res) => 
       
       const match = await createMatch({
         court_id: row.Court,
+        tournament_id: tournamentId,
         team_a: row.TeamA,
         team_b: row.TeamB,
         sets_a: 0,
@@ -445,6 +560,10 @@ router.get('/admin/testLarix', async (req, res) => {
 router.post('/admin/court/:id/larixDevice', async (req, res) => {
   try {
     const courtId = parseInt(req.params.id);
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId is required' });
+    }
     const { deviceId } = req.body;
     
     // Allow empty string to clear the device ID
@@ -455,7 +574,7 @@ router.post('/admin/court/:id/larixDevice', async (req, res) => {
     // If empty string, set to null to clear the device ID
     const deviceIdToSave = deviceId.trim() === '' ? null : deviceId.trim();
     
-    const court = await updateCourtLarixDeviceId(courtId, deviceIdToSave);
+    const court = await updateCourtLarixDeviceId(courtId, tournamentId, deviceIdToSave);
     
     if (!court) {
       return res.status(404).json({ error: 'Court not found' });
@@ -479,7 +598,11 @@ router.post('/admin/court/:id/larixDevice', async (req, res) => {
 // Get all courts with their Larix device IDs
 router.get('/admin/courts/larixDevices', async (req, res) => {
   try {
-    const courts = await getAllCourts();
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId query parameter is required' });
+    }
+    const courts = await getAllCourts(tournamentId);
     const courtsWithDevices = courts.map(court => ({
       courtId: court.id,
       courtName: court.name,
@@ -746,7 +869,11 @@ router.post('/schedule/upload-crossover-mapping', async (req, res) => {
 router.get('/schedule/:courtId', async (req, res) => {
   try {
     const courtId = parseInt(req.params.courtId);
-    const matches = await getAllMatchesForCourt(courtId);
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId query parameter is required' });
+    }
+    const matches = await getAllMatchesForCourt(courtId, tournamentId);
     
     res.json({
       courtId,
@@ -847,6 +974,10 @@ router.post('/schedule/:courtId/:matchId/reorder', async (req, res) => {
   try {
     const courtId = parseInt(req.params.courtId);
     const matchId = parseInt(req.params.matchId);
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId is required' });
+    }
     const { direction } = req.body; // 'up' or 'down'
     
     if (!direction || (direction !== 'up' && direction !== 'down')) {
@@ -854,7 +985,7 @@ router.post('/schedule/:courtId/:matchId/reorder', async (req, res) => {
     }
     
     // Get all matches for this court, ordered by start_time
-    const allMatches = await getAllMatchesForCourt(courtId);
+    const allMatches = await getAllMatchesForCourt(courtId, tournamentId);
     const sortedMatches = allMatches.sort((a, b) => 
       new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
     );
@@ -981,6 +1112,10 @@ function addTimeToTimeString(timeStr: string, minutesToAdd: number): string {
 router.post('/schedule/:courtId/add', async (req, res) => {
   try {
     const courtId = parseInt(req.params.courtId);
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId is required' });
+    }
     const { teamA, teamB, externalMatchId, isCrossover } = req.body;
     
     if (!teamA || !teamB) {
@@ -988,7 +1123,7 @@ router.post('/schedule/:courtId/add', async (req, res) => {
     }
     
     // Get the last match to calculate the new time
-    const lastMatch = await getLastMatchForCourt(courtId);
+    const lastMatch = await getLastMatchForCourt(courtId, tournamentId);
     
     let newStartTime: string;
     if (lastMatch && lastMatch.start_time) {
@@ -1004,6 +1139,7 @@ router.post('/schedule/:courtId/add', async (req, res) => {
     
     const newMatch = await createMatch({
       court_id: courtId,
+      tournament_id: tournamentId,
       team_a: teamA.trim(),
       team_b: teamB.trim(),
       sets_a: 0,
