@@ -238,7 +238,11 @@ router.post('/court/:id/advanceToNextMatch', async (req, res) => {
     
     // 🔔 SEND MATCH START WEBHOOK
     const { sendMatchStartWebhook, setTournamentLabel } = await import('./webhookClient');
-    setTournamentLabel(tournamentLabel); // Sync tournament label
+    // Get tournament label from database
+    const tournament = await getTournament(tournamentId);
+    if (tournament?.label) {
+      setTournamentLabel(tournament.label); // Sync tournament label
+    }
     // Use external_match_id (SportWrench ID) if available, otherwise fall back to internal match ID
     const webhookMatchId = nextMatch.external_match_id || String(nextMatch.id);
     await sendMatchStartWebhook(courtId, webhookMatchId, nextMatch.team_a, nextMatch.team_b);
@@ -620,34 +624,65 @@ router.get('/admin/courts/larixDevices', async (req, res) => {
 // Tournament Label Settings
 // Simple in-memory storage (persists until server restart)
 // For true persistence, could be stored in database
-let tournamentLabel = 'Winter Formal';
-
 // Get tournament label
-router.get('/settings/tournamentLabel', (req, res) => {
-  res.json({ label: tournamentLabel });
+router.get('/settings/tournamentLabel', async (req, res) => {
+  try {
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId query parameter is required' });
+    }
+    
+    const tournament = await getTournament(tournamentId);
+    if (!tournament) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+    
+    res.json({ label: tournament.label || 'Winter Formal' });
+  } catch (error) {
+    console.error('Error fetching tournament label:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Set tournament label
 router.post('/settings/tournamentLabel', async (req, res) => {
-  const { label } = req.body;
-  
-  if (!label || typeof label !== 'string') {
-    return res.status(400).json({ error: 'Label (string) is required' });
+  try {
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId is required' });
+    }
+    
+    const { label } = req.body;
+    
+    if (!label || typeof label !== 'string') {
+      return res.status(400).json({ error: 'Label (string) is required' });
+    }
+    
+    // Update tournament label in database
+    const { error: updateError } = await supabase
+      .from('tournaments')
+      .update({ label: label.trim() })
+      .eq('id', tournamentId);
+    
+    if (updateError) {
+      throw updateError;
+    }
+    
+    // Sync to webhook client so webhooks use the correct label
+    const { setTournamentLabel } = await import('./webhookClient');
+    setTournamentLabel(label.trim());
+    
+    console.log(`🏷️ Tournament ${tournamentId} label updated to: "${label.trim()}"`);
+    
+    res.json({ 
+      success: true, 
+      label: label.trim(),
+      message: `Tournament label updated to "${label.trim()}"` 
+    });
+  } catch (error) {
+    console.error('Error updating tournament label:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-  
-  tournamentLabel = label.trim();
-  
-  // Sync to webhook client so webhooks use the correct label
-  const { setTournamentLabel } = await import('./webhookClient');
-  setTournamentLabel(tournamentLabel);
-  
-  console.log(`🏷️ Tournament label updated to: "${tournamentLabel}"`);
-  
-  res.json({ 
-    success: true, 
-    label: tournamentLabel,
-    message: `Tournament label updated to "${tournamentLabel}"` 
-  });
 });
 
 // =====================================================
@@ -656,55 +691,108 @@ router.post('/settings/tournamentLabel', async (req, res) => {
 
 // Get SportWrench Event ID
 router.get('/settings/sportwrenchEventId', async (req, res) => {
-  const { getSportWrenchEventId } = await import('./sportwrenchSync');
-  res.json({ eventId: getSportWrenchEventId() });
+  try {
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId query parameter is required' });
+    }
+    
+    const tournament = await getTournament(tournamentId);
+    if (!tournament) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+    
+    res.json({ eventId: tournament.sportwrench_event_id || null });
+  } catch (error) {
+    console.error('Error fetching SportWrench Event ID:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Set SportWrench Event ID (5-digit tournament ID)
 router.post('/settings/sportwrenchEventId', async (req, res) => {
-  const { eventId } = req.body;
-  
-  // Allow empty string or null to clear the event ID
-  const eventIdToSave = eventId?.trim() || null;
-  
-  // Validate format if provided (should be 5 digits)
-  if (eventIdToSave && !/^\d{5}$/.test(eventIdToSave)) {
-    return res.status(400).json({ 
-      error: 'Event ID must be a 5-digit number (e.g., 12345)' 
+  try {
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId is required' });
+    }
+    
+    const { eventId } = req.body;
+    
+    // Allow empty string or null to clear the event ID
+    const eventIdToSave = eventId?.trim() || null;
+    
+    // Validate format if provided (should be 5 digits)
+    if (eventIdToSave && !/^\d{5}$/.test(eventIdToSave)) {
+      return res.status(400).json({ 
+        error: 'Event ID must be a 5-digit number (e.g., 12345)' 
+      });
+    }
+    
+    // Update tournament Event ID in database
+    const { error: updateError } = await supabase
+      .from('tournaments')
+      .update({ sportwrench_event_id: eventIdToSave })
+      .eq('id', tournamentId);
+    
+    if (updateError) {
+      throw updateError;
+    }
+    
+    console.log(`🏐 Tournament ${tournamentId} SportWrench Event ID updated to: "${eventIdToSave || '(none)'}"`);
+    
+    res.json({ 
+      success: true, 
+      eventId: eventIdToSave,
+      message: eventIdToSave 
+        ? `SportWrench Event ID set to "${eventIdToSave}". Use "Sync Now" button to sync.`
+        : 'SportWrench Event ID cleared.'
     });
+  } catch (error) {
+    console.error('Error updating SportWrench Event ID:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-  
-  const { setSportWrenchEventId, restartSportWrenchSync } = await import('./sportwrenchSync');
-  setSportWrenchEventId(eventIdToSave);
-  
-  // Restart sync with new settings
-  restartSportWrenchSync();
-  
-  console.log(`🏐 SportWrench Event ID updated to: "${eventIdToSave || '(none)'}"`);
-  
-  res.json({ 
-    success: true, 
-    eventId: eventIdToSave,
-    message: eventIdToSave 
-      ? `SportWrench Event ID set to "${eventIdToSave}". Sync will run every 5 minutes.`
-      : 'SportWrench Event ID cleared. Sync disabled.'
-  });
 });
 
 // Manually trigger a SportWrench sync
 router.post('/settings/sportwrenchSync', async (req, res) => {
-  const { triggerManualSync, getSportWrenchEventId } = await import('./sportwrenchSync');
-  
-  if (!getSportWrenchEventId()) {
-    return res.status(400).json({ 
-      error: 'SportWrench Event ID not configured. Set it first in Admin Panel.' 
+  try {
+    const tournamentId = getTournamentId(req);
+    if (!tournamentId) {
+      return res.status(400).json({ error: 'tournamentId is required' });
+    }
+    
+    const tournament = await getTournament(tournamentId);
+    if (!tournament) {
+      return res.status(404).json({ error: 'Tournament not found' });
+    }
+    
+    if (!tournament.sportwrench_event_id) {
+      return res.status(400).json({ 
+        error: 'SportWrench Event ID not configured for this tournament. Set it first in Admin Panel.' 
+      });
+    }
+    
+    // Import sync function and trigger for this tournament
+    const { syncFromSportWrench } = await import('./sportwrenchSync');
+    
+    // Temporarily set the Event ID for sync (we'll refactor this later)
+    const { setSportWrenchEventId } = await import('./sportwrenchSync');
+    const oldEventId = tournament.sportwrench_event_id;
+    setSportWrenchEventId(tournament.sportwrench_event_id);
+    
+    console.log(`🔄 Manual SportWrench sync triggered for tournament ${tournamentId}...`);
+    const updatedIds = await syncFromSportWrench();
+    
+    res.json({
+      success: true,
+      matchesUpdated: updatedIds.length,
+      message: `Updated ${updatedIds.length} match${updatedIds.length !== 1 ? 'es' : ''}`
     });
+  } catch (error) {
+    console.error('Error triggering SportWrench sync:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-  
-  console.log('🔄 Manual SportWrench sync triggered...');
-  const result = await triggerManualSync();
-  
-  res.json(result);
 });
 
 // Get SportWrench sync status

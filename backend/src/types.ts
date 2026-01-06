@@ -2,6 +2,8 @@
 export interface Tournament {
   id: number;
   name: string;
+  label?: string;
+  sportwrench_event_id?: string | null;
   created_at?: string;
   updated_at?: string;
 }
