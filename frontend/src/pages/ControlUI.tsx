@@ -5,7 +5,6 @@ import { Court, Match } from '../types';
 
 function ControlUI() {
   const [selectedCourt, setSelectedCourt] = useState<number | null>(null);
-  const [tournamentId, setTournamentId] = useState<number | null>(null);
   const [courts, setCourts] = useState<Court[]>([]);
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
   const [logoTaps, setLogoTaps] = useState(0);
@@ -17,14 +16,13 @@ function ControlUI() {
   const [toastType, setToastType] = useState<'success' | 'error' | 'warning'>('success');
   const [tournamentLabel, setTournamentLabel] = useState('Winter Formal');
 
-  const { scoreState, isConnected } = useSocket(selectedCourt, tournamentId);
+  const { scoreState, isConnected } = useSocket(selectedCourt);
 
   // Fetch tournament label
   useEffect(() => {
-    if (!tournamentId) return;
     async function fetchTournamentLabel() {
       try {
-        const response = await fetch(`${API_URL}/api/settings/tournamentLabel?tournamentId=${tournamentId}`);
+        const response = await fetch(`${API_URL}/api/settings/tournamentLabel`);
         if (response.ok) {
           const data = await response.json();
           setTournamentLabel(data.label || 'Winter Formal');
@@ -37,7 +35,7 @@ function ControlUI() {
     // Refresh every 30 seconds in case it's changed
     const interval = setInterval(fetchTournamentLabel, 30000);
     return () => clearInterval(interval);
-  }, [tournamentId]);
+  }, []);
 
   // Toast notification helper
   function showToast(message: string, type: 'success' | 'error' | 'warning' = 'success') {
@@ -62,29 +60,15 @@ function ControlUI() {
     }
   }, [scoreState?.pendingSetWin]);
 
-  // Load tournament and court selection from URL or localStorage
+  // Load court selection from localStorage
   useEffect(() => {
-    // Get tournament_id from URL query param first, then localStorage
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlTournamentId = urlParams.get('tournamentId');
-    const savedTournamentId = localStorage.getItem('tournamentId');
-    const tournamentIdValue = urlTournamentId ? parseInt(urlTournamentId) : (savedTournamentId ? parseInt(savedTournamentId) : null);
-    
-    if (tournamentIdValue) {
-      setTournamentId(tournamentIdValue);
-      if (!urlTournamentId) {
-        // Save to localStorage if from URL
-        localStorage.setItem('tournamentId', tournamentIdValue.toString());
-      }
-    }
-    
     const savedCourt = localStorage.getItem('courtId');
-    if (savedCourt && tournamentIdValue) {
+    if (savedCourt) {
       const courtId = parseInt(savedCourt);
       setSelectedCourt(courtId);
       setShowCourtSelect(false);
-      loadCurrentMatch(courtId, tournamentIdValue);
-      loadUpcomingMatches(courtId, tournamentIdValue);
+      loadCurrentMatch(courtId);
+      loadUpcomingMatches(courtId);
     }
   }, []);
 
@@ -108,28 +92,18 @@ function ControlUI() {
   }, []);
 
   async function fetchCourts() {
-    if (!tournamentId) return;
     try {
-      const response = await fetch(`${API_URL}/api/courts?tournamentId=${tournamentId}`);
+      const response = await fetch(`${API_URL}/api/courts`);
       const data = await response.json();
       setCourts(data);
     } catch (error) {
       console.error('Error fetching courts:', error);
     }
   }
-  
-  // Refetch courts when tournament changes
-  useEffect(() => {
-    if (tournamentId) {
-      fetchCourts();
-    }
-  }, [tournamentId]);
 
-  async function loadCurrentMatch(courtId: number, tId?: number) {
-    const t = tId || tournamentId;
-    if (!t) return;
+  async function loadCurrentMatch(courtId: number) {
     try {
-      const response = await fetch(`${API_URL}/api/court/${courtId}/currentMatch?tournamentId=${t}`);
+      const response = await fetch(`${API_URL}/api/court/${courtId}/currentMatch`);
       if (response.ok) {
         const match = await response.json();
         setCurrentMatch(match);
@@ -139,11 +113,9 @@ function ControlUI() {
     }
   }
 
-  async function loadUpcomingMatches(courtId: number, tId?: number) {
-    const t = tId || tournamentId;
-    if (!t) return;
+  async function loadUpcomingMatches(courtId: number) {
     try {
-      const response = await fetch(`${API_URL}/api/court/${courtId}/upcomingMatches?limit=3&tournamentId=${t}`);
+      const response = await fetch(`${API_URL}/api/court/${courtId}/upcomingMatches?limit=3`);
       if (response.ok) {
         const matches = await response.json();
         setUpcomingMatches(matches);
@@ -154,13 +126,11 @@ function ControlUI() {
   }
 
   async function advanceToNextMatch() {
-    if (!selectedCourt || !tournamentId) return;
+    if (!selectedCourt) return;
     
     try {
-      const response = await fetch(`${API_URL}/api/court/${selectedCourt}/advanceToNextMatch?tournamentId=${tournamentId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tournamentId })
+      const response = await fetch(`${API_URL}/api/court/${selectedCourt}/advanceToNextMatch`, {
+        method: 'POST'
       });
       
       if (response.ok) {
@@ -190,12 +160,7 @@ function ControlUI() {
   }
 
   function handleCourtSelect(courtId: number) {
-    if (!tournamentId) {
-      alert('Please select a tournament first');
-      return;
-    }
     localStorage.setItem('courtId', courtId.toString());
-    localStorage.setItem('tournamentId', tournamentId.toString());
     setSelectedCourt(courtId);
     setShowCourtSelect(false);
     loadCurrentMatch(courtId);
@@ -221,13 +186,13 @@ function ControlUI() {
   }
 
   async function handleScoreChange(team: 'A' | 'B', action: 'increment' | 'decrement') {
-    if (!selectedCourt || !tournamentId) return;
+    if (!selectedCourt) return;
 
     try {
       await fetch(`${API_URL}/api/score/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courtId: selectedCourt, team, tournamentId })
+        body: JSON.stringify({ courtId: selectedCourt, team })
       });
     } catch (error) {
       console.error('Error updating score:', error);
@@ -235,14 +200,14 @@ function ControlUI() {
   }
 
   async function handleResetSet() {
-    if (!selectedCourt || !tournamentId) return;
+    if (!selectedCourt) return;
     if (!confirm('Reset current set to 0-0?')) return;
 
     try {
       await fetch(`${API_URL}/api/score/resetSet`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courtId: selectedCourt, tournamentId })
+        body: JSON.stringify({ courtId: selectedCourt })
       });
     } catch (error) {
       console.error('Error resetting set:', error);
@@ -250,14 +215,14 @@ function ControlUI() {
   }
 
   async function handleSwapSides() {
-    if (!selectedCourt || !tournamentId) return;
+    if (!selectedCourt) return;
     if (!confirm('Swap team sides?')) return;
 
     try {
       await fetch(`${API_URL}/api/score/swapSides`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courtId: selectedCourt, tournamentId })
+        body: JSON.stringify({ courtId: selectedCourt })
       });
       // Reload match data
       loadCurrentMatch(selectedCourt);
@@ -267,7 +232,7 @@ function ControlUI() {
   }
 
   async function handleConfirmSetWin() {
-    if (!selectedCourt || !tournamentId) return;
+    if (!selectedCourt) return;
 
     try {
       // Check if this is the final set win (match ending)
@@ -279,7 +244,7 @@ function ControlUI() {
       await fetch(`${API_URL}/api/score/confirmSetWin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courtId: selectedCourt, tournamentId })
+        body: JSON.stringify({ courtId: selectedCourt })
       });
       
       setShowSetWinModal(false);
@@ -294,14 +259,14 @@ function ControlUI() {
   }
 
   async function handleUndoSetWin() {
-    if (!selectedCourt || !tournamentId || !scoreState?.pendingSetWin) return;
+    if (!selectedCourt || !scoreState?.pendingSetWin) return;
 
     // Undo the last point by decrementing the winning team's score
     try {
       await fetch(`${API_URL}/api/score/decrement`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courtId: selectedCourt, team: scoreState.pendingSetWin, tournamentId })
+        body: JSON.stringify({ courtId: selectedCourt, team: scoreState.pendingSetWin })
       });
       setShowSetWinModal(false);
     } catch (error) {

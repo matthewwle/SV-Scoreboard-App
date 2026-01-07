@@ -34,23 +34,7 @@ interface Court {
   name: string;
 }
 
-interface Tournament {
-  id: number;
-  name: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
 function AdminUI() {
-  // Tournament selection state - MUST be first
-  const [tournaments, setTournaments] = useState<Tournament[]>([]);
-  const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
-  const [loadingTournaments, setLoadingTournaments] = useState(true);
-  const [showTournamentSelection, setShowTournamentSelection] = useState(true);
-  const [newTournamentName, setNewTournamentName] = useState('');
-  const [creatingTournament, setCreatingTournament] = useState(false);
-  const [deletingTournamentId, setDeletingTournamentId] = useState<number | null>(null);
-  
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<any>(null);
@@ -116,128 +100,34 @@ function AdminUI() {
   const [uploadingCrossover, setUploadingCrossover] = useState(false);
   const [crossoverResult, setCrossoverResult] = useState<string | null>(null);
 
-  // Load tournaments on mount
+  // Load settings on mount
   useEffect(() => {
-    loadTournaments();
-  }, []);
-
-  // Load tournaments from API
-  async function loadTournaments() {
-    setLoadingTournaments(true);
-    try {
-      const response = await fetch(`${API_URL}/api/tournaments`);
-      if (response.ok) {
-        const data = await response.json();
-        setTournaments(data);
-      } else {
-        console.error('Failed to load tournaments');
-      }
-    } catch (err) {
-      console.error('Error loading tournaments:', err);
-    } finally {
-      setLoadingTournaments(false);
-    }
-  }
-
-  // Create new tournament
-  async function createTournament() {
-    if (!newTournamentName.trim()) {
-      return;
-    }
-    setCreatingTournament(true);
-    try {
-      const response = await fetch(`${API_URL}/api/tournaments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newTournamentName.trim() })
-      });
-      if (response.ok) {
-        const tournament = await response.json();
-        await loadTournaments();
-        setNewTournamentName('');
-        // Auto-select the newly created tournament
-        selectTournament(tournament);
-      } else {
-        const error = await response.json();
-        console.error('Failed to create tournament:', error);
-      }
-    } catch (err) {
-      console.error('Error creating tournament:', err);
-    } finally {
-      setCreatingTournament(false);
-    }
-  }
-
-  // Delete tournament
-  async function deleteTournament(tournamentId: number) {
-    if (!confirm('Are you sure you want to delete this tournament? This will delete all courts, matches, and scores for this tournament.')) {
-      return;
-    }
-    setDeletingTournamentId(tournamentId);
-    try {
-      const response = await fetch(`${API_URL}/api/tournaments/${tournamentId}`, {
-        method: 'DELETE'
-      });
-      if (response.ok) {
-        await loadTournaments();
-        // If we deleted the selected tournament, clear selection
-        if (selectedTournament?.id === tournamentId) {
-          setSelectedTournament(null);
-          setShowTournamentSelection(true);
+    // Load tournament label
+    async function loadSettings() {
+      try {
+        // Load tournament label
+        const labelResponse = await fetch(`${API_URL}/api/settings/tournamentLabel`);
+        if (labelResponse.ok) {
+          const data = await labelResponse.json();
+          setTournamentLabel(data.label || 'Winter Formal');
         }
-      } else {
-        const error = await response.json();
-        console.error('Failed to delete tournament:', error);
+        
+        // Load SportWrench Event ID
+        const swResponse = await fetch(`${API_URL}/api/settings/sportwrenchEventId`);
+        if (swResponse.ok) {
+          const data = await swResponse.json();
+          setSportWrenchEventId(data.eventId || '');
+        }
+      } catch (err) {
+        console.error('Failed to load settings:', err);
       }
-    } catch (err) {
-      console.error('Error deleting tournament:', err);
-    } finally {
-      setDeletingTournamentId(null);
     }
-  }
-
-  // Select a tournament
-  function selectTournament(tournament: Tournament) {
-    setSelectedTournament(tournament);
-    setShowTournamentSelection(false);
-    // Load settings for this tournament
-    loadSettingsForTournament();
-  }
-
-  // Load settings for selected tournament
-  async function loadSettingsForTournament() {
-    if (!selectedTournament) return;
-    try {
-      // Load tournament label
-      const labelResponse = await fetch(`${API_URL}/api/settings/tournamentLabel?tournamentId=${selectedTournament.id}`);
-      if (labelResponse.ok) {
-        const data = await labelResponse.json();
-        setTournamentLabel(data.label || 'Winter Formal');
-      }
-      
-      // Load SportWrench Event ID
-      const swResponse = await fetch(`${API_URL}/api/settings/sportwrenchEventId?tournamentId=${selectedTournament.id}`);
-      if (swResponse.ok) {
-        const data = await swResponse.json();
-        setSportWrenchEventId(data.eventId || '');
-      }
-    } catch (err) {
-      console.error('Failed to load settings:', err);
-    }
-  }
-
-  // Helper to get tournament query parameter
-  function getTournamentQuery(): string {
-    return selectedTournament ? `?tournamentId=${selectedTournament.id}` : '';
-  }
+    loadSettings();
+  }, []);
 
   async function handleUpload() {
     if (!file) {
       setError('Please select a file');
-      return;
-    }
-    if (!selectedTournament) {
-      setError('Please select a tournament first');
       return;
     }
 
@@ -248,9 +138,8 @@ function AdminUI() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('tournamentId', selectedTournament.id.toString());
 
-      const response = await fetch(`${API_URL}/api/admin/uploadSchedule${getTournamentQuery()}`, {
+      const response = await fetch(`${API_URL}/api/admin/uploadSchedule`, {
         method: 'POST',
         body: formData
       });
@@ -320,12 +209,11 @@ function AdminUI() {
 
   // Load court devices from API
   async function loadCourtDevices() {
-    if (!selectedTournament) return;
     setLoadingDevices(true);
     setDeviceError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/admin/courts/larixDevices${getTournamentQuery()}`);
+      const response = await fetch(`${API_URL}/api/admin/courts/larixDevices`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch court devices');
@@ -349,7 +237,6 @@ function AdminUI() {
 
   // Save device ID for a specific court
   async function saveDeviceId(courtId: number) {
-    if (!selectedTournament) return;
     const deviceId = deviceInputs[courtId]?.trim();
     
     if (!deviceId) {
@@ -362,10 +249,10 @@ function AdminUI() {
     setDeviceSuccess(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/admin/court/${courtId}/larixDevice${getTournamentQuery()}`, {
+      const response = await fetch(`${API_URL}/api/admin/court/${courtId}/larixDevice`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceId, tournamentId: selectedTournament.id })
+        body: JSON.stringify({ deviceId })
       });
 
       if (!response.ok) {
@@ -397,7 +284,6 @@ function AdminUI() {
   const [deletingDevice, setDeletingDevice] = useState<number | null>(null);
   
   async function deleteDeviceId(courtId: number) {
-    if (!selectedTournament) return;
     if (!confirm(`Remove device ID from Court ${courtId}?`)) {
       return;
     }
@@ -407,10 +293,10 @@ function AdminUI() {
     setDeviceSuccess(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/admin/court/${courtId}/larixDevice${getTournamentQuery()}`, {
+      const response = await fetch(`${API_URL}/api/admin/court/${courtId}/larixDevice`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceId: '', tournamentId: selectedTournament.id })  // Empty string to clear
+        body: JSON.stringify({ deviceId: '' })  // Empty string to clear
       });
 
       if (!response.ok) {
@@ -450,9 +336,8 @@ function AdminUI() {
 
   // Load tournament label from API
   async function loadTournamentLabel() {
-    if (!selectedTournament) return;
     try {
-      const response = await fetch(`${API_URL}/api/settings/tournamentLabel${getTournamentQuery()}`);
+      const response = await fetch(`${API_URL}/api/settings/tournamentLabel`);
       if (response.ok) {
         const data = await response.json();
         setTournamentLabel(data.label || 'Winter Formal');
@@ -464,15 +349,14 @@ function AdminUI() {
 
   // Save tournament label to API
   async function saveTournamentLabel() {
-    if (!selectedTournament) return;
     setSavingLabel(true);
     setLabelSuccess(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/settings/tournamentLabel${getTournamentQuery()}`, {
+      const response = await fetch(`${API_URL}/api/settings/tournamentLabel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: labelInput, tournamentId: selectedTournament.id })
+        body: JSON.stringify({ label: labelInput })
       });
 
       if (!response.ok) {
@@ -508,9 +392,8 @@ function AdminUI() {
 
   // Load SportWrench Event ID from API
   async function loadSportWrenchEventId() {
-    if (!selectedTournament) return;
     try {
-      const response = await fetch(`${API_URL}/api/settings/sportwrenchEventId${getTournamentQuery()}`);
+      const response = await fetch(`${API_URL}/api/settings/sportwrenchEventId`);
       if (response.ok) {
         const data = await response.json();
         setSportWrenchEventId(data.eventId || '');
@@ -523,16 +406,15 @@ function AdminUI() {
 
   // Save SportWrench Event ID
   async function saveSportWrenchEventId() {
-    if (!selectedTournament) return;
     setSavingSportWrench(true);
     setSportWrenchSuccess(null);
     setSportWrenchError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/settings/sportwrenchEventId${getTournamentQuery()}`, {
+      const response = await fetch(`${API_URL}/api/settings/sportwrenchEventId`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: sportWrenchInput.trim(), tournamentId: selectedTournament.id })
+        body: JSON.stringify({ eventId: sportWrenchInput.trim() })
       });
 
       const data = await response.json();
@@ -554,16 +436,14 @@ function AdminUI() {
 
   // Manually trigger SportWrench sync
   async function triggerSportWrenchSync() {
-    if (!selectedTournament) return;
     setSyncingSportWrench(true);
     setLastSyncResult(null);
     setSportWrenchError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/settings/sportwrenchSync${getTournamentQuery()}`, {
+      const response = await fetch(`${API_URL}/api/settings/sportwrenchSync`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tournamentId: selectedTournament.id })
+        headers: { 'Content-Type': 'application/json' }
       });
 
       const data = await response.json();
@@ -599,10 +479,6 @@ function AdminUI() {
 
   // Import matches from SportWrench
   async function importFromSportWrench() {
-    if (!selectedTournament) {
-      setSportWrenchError('Please select a tournament first');
-      return;
-    }
     if (!sportWrenchEventId) {
       setSportWrenchError('Please save an Event ID first (click Save button after entering the ID)');
       return;
@@ -621,14 +497,13 @@ function AdminUI() {
     console.log(`Importing from Event ID: ${sportWrenchEventId}, Courts: ${importCourtMin}-${importCourtMax}`);
 
     try {
-      const response = await fetch(`${API_URL}/api/schedule/import-from-sportwrench${getTournamentQuery()}`, {
+      const response = await fetch(`${API_URL}/api/schedule/import-from-sportwrench`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           eventId: sportWrenchEventId,
           courtMin: importCourtMin,
-          courtMax: importCourtMax,
-          tournamentId: selectedTournament.id
+          courtMax: importCourtMax
         })
       });
 
@@ -687,13 +562,10 @@ function AdminUI() {
         return;
       }
 
-      const response = await fetch(`${API_URL}/api/schedule/upload-crossover-mapping${getTournamentQuery()}`, {
+      const response = await fetch(`${API_URL}/api/schedule/upload-crossover-mapping`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          mappings,
-          tournamentId: selectedTournament?.id 
-        })
+        body: JSON.stringify({ mappings })
       });
 
       const data = await response.json();
@@ -720,9 +592,8 @@ function AdminUI() {
 
   // Load courts list
   async function loadCourts() {
-    if (!selectedTournament) return;
     try {
-      const response = await fetch(`${API_URL}/api/courts${getTournamentQuery()}`);
+      const response = await fetch(`${API_URL}/api/courts`);
       if (response.ok) {
         const data = await response.json();
         setCourts(data);
@@ -734,12 +605,11 @@ function AdminUI() {
 
   // Load schedule for selected court
   async function loadSchedule(courtId: number) {
-    if (!selectedTournament) return;
     setLoadingSchedule(true);
     setScheduleError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/schedule/${courtId}${getTournamentQuery()}`);
+      const response = await fetch(`${API_URL}/api/schedule/${courtId}`);
       if (!response.ok) {
         throw new Error('Failed to load schedule');
       }
@@ -768,7 +638,7 @@ function AdminUI() {
 
   // Save game changes
   async function saveGame(gameId: number) {
-    if (!selectedCourtId || !selectedTournament) return;
+    if (!selectedCourtId) return;
     
     const gameData = editingGames[gameId];
     if (!gameData) return;
@@ -778,14 +648,13 @@ function AdminUI() {
     setScheduleSuccess(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/schedule/${selectedCourtId}/update${getTournamentQuery()}`, {
+      const response = await fetch(`${API_URL}/api/schedule/${selectedCourtId}/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: gameId,
           teamA: gameData.teamA,
-          teamB: gameData.teamB,
-          tournamentId: selectedTournament.id
+          teamB: gameData.teamB
         })
       });
 
@@ -813,17 +682,17 @@ function AdminUI() {
 
   // Reorder match (move up or down in queue)
   async function reorderMatch(gameId: number, direction: 'up' | 'down') {
-    if (!selectedCourtId || !selectedTournament) return;
+    if (!selectedCourtId) return;
     
     setReorderingGameId(gameId);
     setScheduleError(null);
     setScheduleSuccess(null);
     
     try {
-      const response = await fetch(`${API_URL}/api/schedule/${selectedCourtId}/${gameId}/reorder${getTournamentQuery()}`, {
+      const response = await fetch(`${API_URL}/api/schedule/${selectedCourtId}/${gameId}/reorder`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ direction, tournamentId: selectedTournament.id })
+        body: JSON.stringify({ direction })
       });
       
       if (!response.ok) {
@@ -874,9 +743,9 @@ function AdminUI() {
 
   // Delete game and shift times
   async function deleteGame(gameId: number) {
-    if (!selectedCourtId || !selectedTournament) return;
+    if (!selectedCourtId) return;
     
-    if (!confirm('Delete this game? The schedule will have a gap at this time.')) {
+    if (!confirm('Delete this game? Later games will shift up by 1 hour.')) {
       return;
     }
 
@@ -885,7 +754,7 @@ function AdminUI() {
     setScheduleSuccess(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/schedule/${selectedCourtId}/${gameId}${getTournamentQuery()}`, {
+      const response = await fetch(`${API_URL}/api/schedule/${selectedCourtId}/${gameId}`, {
         method: 'DELETE'
       });
 
@@ -909,7 +778,7 @@ function AdminUI() {
 
   // Add new game
   async function addGame() {
-    if (!selectedCourtId || !selectedTournament) return;
+    if (!selectedCourtId) return;
     if (!newGameTeamA.trim() || !newGameTeamB.trim()) {
       setScheduleError('Please enter both team names');
       return;
@@ -920,14 +789,13 @@ function AdminUI() {
     setScheduleSuccess(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/schedule/${selectedCourtId}/add${getTournamentQuery()}`, {
+      const response = await fetch(`${API_URL}/api/schedule/${selectedCourtId}/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           teamA: newGameTeamA.trim(),
           teamB: newGameTeamB.trim(),
-          isCrossover: newGameIsCrossover,
-          tournamentId: selectedTournament.id
+          isCrossover: newGameIsCrossover
         })
       });
 
@@ -989,124 +857,13 @@ function AdminUI() {
     return timeString;
   }
 
-  // Tournament Selection Screen
-  if (showTournamentSelection || !selectedTournament) {
-    return (
-      <div className="min-h-screen p-8" style={{ backgroundColor: '#000429' }}>
-        <div className="max-w-4xl mx-auto">
-          {/* Header */}
-          <div className="rounded-xl shadow-lg p-6 mb-6" style={{ backgroundColor: '#1a1a3e' }}>
-            <h1 className="text-3xl font-bold" style={{ color: '#DDFD51' }}>Select Tournament</h1>
-            <p className="mt-2" style={{ color: '#9a9ab8' }}>Choose a tournament to manage or create a new one</p>
-          </div>
-
-          {/* Create New Tournament */}
-          <div className="rounded-xl shadow-lg p-6 mb-6" style={{ backgroundColor: '#1a1a3e' }}>
-            <h2 className="text-xl font-bold mb-4" style={{ color: '#DDFD51' }}>Create New Tournament</h2>
-            <div className="flex gap-4">
-              <input
-                type="text"
-                value={newTournamentName}
-                onChange={(e) => setNewTournamentName(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && createTournament()}
-                placeholder="Enter tournament name..."
-                className="flex-1 px-4 py-3 rounded-lg"
-                style={{ 
-                  backgroundColor: '#000429', 
-                  color: '#ffffff',
-                  border: '2px solid #DDFD51'
-                }}
-              />
-              <button
-                onClick={createTournament}
-                disabled={creatingTournament || !newTournamentName.trim()}
-                className="font-bold py-3 px-6 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-50"
-                style={{ backgroundColor: '#DDFD51', color: '#000429' }}
-              >
-                {creatingTournament ? 'Creating...' : 'Create'}
-              </button>
-            </div>
-          </div>
-
-          {/* Tournament List */}
-          <div className="rounded-xl shadow-lg p-6" style={{ backgroundColor: '#1a1a3e' }}>
-            <h2 className="text-xl font-bold mb-4" style={{ color: '#DDFD51' }}>Existing Tournaments</h2>
-            {loadingTournaments ? (
-              <div className="text-center py-8" style={{ color: '#9a9ab8' }}>Loading tournaments...</div>
-            ) : tournaments.length === 0 ? (
-              <div className="text-center py-8" style={{ color: '#9a9ab8' }}>
-                No tournaments yet. Create one above to get started.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {tournaments.map((tournament) => (
-                  <div
-                    key={tournament.id}
-                    className="rounded-lg p-4 border-2 transition-all hover:opacity-100"
-                    style={{ 
-                      backgroundColor: '#000429',
-                      borderColor: 'rgba(221, 253, 81, 0.5)'
-                    }}
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="text-lg font-bold" style={{ color: '#DDFD51' }}>
-                        {tournament.name}
-                      </h3>
-                      <button
-                        onClick={() => deleteTournament(tournament.id)}
-                        disabled={deletingTournamentId === tournament.id}
-                        className="text-red-400 hover:text-red-300 transition-colors disabled:opacity-50"
-                        title="Delete tournament"
-                      >
-                        {deletingTournamentId === tournament.id ? '...' : '🗑️'}
-                      </button>
-                    </div>
-                    {tournament.created_at && (
-                      <p className="text-xs mb-3" style={{ color: '#9a9ab8' }}>
-                        Created: {new Date(tournament.created_at).toLocaleDateString()}
-                      </p>
-                    )}
-                    <button
-                      onClick={() => selectTournament(tournament)}
-                      className="w-full py-2 px-4 rounded-lg font-bold transition-opacity hover:opacity-80"
-                      style={{ backgroundColor: '#DDFD51', color: '#000429' }}
-                    >
-                      Select Tournament
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen p-8" style={{ backgroundColor: '#000429' }}>
       <div className="max-w-4xl mx-auto">
-        {/* Header with Tournament Info */}
+        {/* Header */}
         <div className="rounded-xl shadow-lg p-6 mb-6" style={{ backgroundColor: '#1a1a3e' }}>
-          <div className="flex justify-between items-start">
-            <div>
-              <h1 className="text-3xl font-bold" style={{ color: '#DDFD51' }}>Admin Dashboard</h1>
-              <p className="mt-2" style={{ color: '#9a9ab8' }}>Manage schedules, device assignments, and logs</p>
-              <p className="mt-2 text-sm" style={{ color: '#DDFD51' }}>
-                Tournament: <span className="font-bold">{selectedTournament.name}</span>
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setShowTournamentSelection(true);
-                setSelectedTournament(null);
-              }}
-              className="px-4 py-2 rounded-lg font-bold transition-opacity hover:opacity-80"
-              style={{ backgroundColor: '#2a2a4e', color: '#DDFD51' }}
-            >
-              Switch Tournament
-            </button>
-          </div>
+          <h1 className="text-3xl font-bold" style={{ color: '#DDFD51' }}>Admin Dashboard</h1>
+          <p className="mt-2" style={{ color: '#9a9ab8' }}>Manage schedules, device assignments, and logs</p>
         </div>
 
         {/* Quick Actions */}
