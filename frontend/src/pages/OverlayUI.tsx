@@ -60,7 +60,7 @@ function OverlayUI() {
     resolveCourt();
   }, [isNewRoute, tournamentId, courtNumber, legacyCourtId]);
 
-  // Swapped for camera view: score-table Left appears on RIGHT of overlay, Right on LEFT
+  // Inverted for camera: control "Right" → overlay LEFT, control "Left" → overlay RIGHT
   const leftScore = scoreState?.leftScore ?? 0;
   const rightScore = scoreState?.rightScore ?? 0;
   const setHistory = scoreState?.setHistory ?? [];
@@ -78,10 +78,10 @@ function OverlayUI() {
               </div>
 
               <div className="flex-1">
-                {/* Right (score table) = first row on overlay (camera left) */}
+                {/* Overlay LEFT = control Right (first row) */}
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-xl font-bold truncate mr-4" style={{ color: 'white', maxWidth: '300px' }}>
-                    Right
+                    Left
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="text-4xl font-bold" style={{ color: 'white' }}>
@@ -108,10 +108,10 @@ function OverlayUI() {
                   </div>
                 </div>
 
-                {/* Left (score table) = second row on overlay (camera right) */}
+                {/* Overlay RIGHT = control Left (second row) */}
                 <div className="flex items-center justify-between">
                   <div className="text-xl font-bold truncate mr-4" style={{ color: 'white', maxWidth: '300px' }}>
-                    Left
+                    Right
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="text-4xl font-bold" style={{ color: 'white' }}>
