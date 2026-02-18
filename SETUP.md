@@ -121,40 +121,44 @@ cd frontend
 npm run dev
 ```
 
-## Step 6: Access the Application
+## Step 6: Database Migration (Simplified Scoreboard)
+
+If you are starting fresh or migrating from the old schema, run the simplified scoreboard migration in Supabase SQL editor:
+
+- Open `database/migration_simplified_scoreboard.sql` and run it in your project's SQL editor.
+- This creates `court_score_states` and removes matches, match_logs, and SportWrench/Larix columns.
+
+## Step 7: Access the Application
 
 Once running, open your browser:
 
-- **Scorekeeper Interface:** http://localhost:5173/control
-- **Admin Upload:** http://localhost:5173/admin
-- **Overlay (Court 1):** http://localhost:5173/court/1
+- **Scorekeeper (Control):** http://localhost:5173/control
+- **Admin:** http://localhost:5173/admin (manage tournaments and labels)
+- **Overlay:** http://localhost:5173/tournament/1/court/1 (tournament ID 1, court number 1)
 
-## Step 7: Test It Out
+## Step 8: Test It Out
 
 ### Test Workflow
 
-1. **Upload a Schedule:**
+1. **Create a Tournament (if needed):**
    - Go to http://localhost:5173/admin
-   - Upload the `example-schedule.csv` file
-   - Verify matches were created
+   - Click "Manage Tournaments" → "New Tournament"
+   - Enter a label and court count, then Create
 
 2. **Use the Scorekeeper:**
    - Go to http://localhost:5173/control
-   - Select "Court 1"
-   - You should see "Spikers United" vs "Net Warriors"
-   - Click + buttons to increment scores
+   - Select a tournament, then select a court (e.g. Court 1)
+   - You should see "Left" and "Right" with + / − buttons
+   - Click + to increment scores
 
 3. **View the Overlay:**
-   - Open http://localhost:5173/court/1 in another tab/window
-   - The scores should update in real-time as you change them
+   - Open http://localhost:5173/tournament/1/court/1 (use your tournament and court numbers)
+   - Scores update in real time; Left/Right are swapped for camera view
 
-4. **Test Set Win Logic:**
-   - Increment Team A to 25 points
-   - Increment Team B to 23 points
-   - Add 2 more to Team A → Should trigger set win
-   - Sets won should increment to 1-0
-   - Scores should reset to 0-0
-   - Set number should become 2
+4. **Test Set Win and Next Game:**
+   - Score to 25–23 (or 15–13 for set 3) to trigger set win; confirm in the modal
+   - After 2 sets won, the "Game complete" screen appears
+   - Click "Start next game" to reset to 0–0
 
 ## Optional: Redis Setup
 

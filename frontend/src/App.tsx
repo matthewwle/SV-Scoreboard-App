@@ -8,6 +8,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/control" element={<ControlUI />} />
+        <Route path="/tournament/:tid/court/:courtNum" element={<OverlayUI />} />
         <Route path="/court/:courtId" element={<OverlayUI />} />
         <Route path="/admin" element={<AdminUI />} />
         <Route path="/" element={<ControlUI />} />

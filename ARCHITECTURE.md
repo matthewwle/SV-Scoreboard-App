@@ -54,9 +54,10 @@ The system is built as a modern real-time web application using a three-tier arc
 │  │   PostgreSQL     │     │  │  │      Redis       │  │
 │  │   (Supabase)     │     │  │  │                  │  │
 │  │                  │     │  │  │  • Cache         │  │
-│  │  • courts        │     │  │  │  • Pub/Sub       │  │
-│  │  • matches       │     │  │  │  • Sessions      │  │
-│  │  • score_states  │     │  │  └──────────────────┘  │
+│  │  • tournaments   │     │  │  │  • Pub/Sub       │  │
+│  │  • courts        │     │  │  │  • Sessions      │  │
+│  │  • court_score_  │     │  │  │  • Sessions      │  │
+│  │    states        │     │  │  └──────────────────┘  │
 │  └──────────────────┘     │  └─────────────────────────┘
 └───────────────────────────┘
 ```
@@ -72,7 +73,7 @@ User taps + button
 Control UI (React)
        │
        ▼
-POST /api/score/increment {courtId, team}
+POST /api/score/increment {courtId, side}
        │
        ▼
 Backend API Route
@@ -104,30 +105,7 @@ scoring.ts → incrementScore()
 Total latency: <200ms
 ```
 
-### 2. Match Assignment Flow
-
-```
-Admin uploads CSV
-       │
-       ▼
-POST /api/admin/uploadSchedule
-       │
-       ▼
-Multer middleware (parse file)
-       │
-       ▼
-XLSX.read() → Parse rows
-       │
-       ▼
-For each row:
-  ├─ Create Match in DB
-  └─ Assign to Court (if empty)
-       │
-       ▼
-Return created matches
-```
-
-### 3. WebSocket Connection Flow
+### 2. WebSocket Connection Flow
 
 ```
 User opens Control/Overlay UI
@@ -167,9 +145,9 @@ App.tsx (Router)
 ├─ ControlUI.tsx
 │  ├─ useSocket(courtId)
 │  ├─ Court Selection Modal
-│  ├─ Score Display
+│  ├─ Score Display (Left / Right)
 │  ├─ Increment/Decrement Buttons
-│  └─ Action Buttons (Reset, Swap)
+│  └─ Action Buttons (Reset Set, Start next game)
 │
 ├─ OverlayUI.tsx
 │  ├─ useSocket(courtId)
@@ -177,9 +155,8 @@ App.tsx (Router)
 │  └─ Large Score Display
 │
 └─ AdminUI.tsx
-   ├─ File Upload Input
-   ├─ Upload Handler
-   └─ Result Display
+   ├─ Tournament Manager (create, edit, delete)
+   └─ Tournament Label Editor
 ```
 
 ### Backend Modules
@@ -201,15 +178,14 @@ server.ts (Entry Point)
     │  ├─ incrementScore()
     │  ├─ decrementScore()
     │  ├─ resetSet()
-    │  ├─ swapSides()
     │  ├─ checkSetWin()
+    │  ├─ resetGame()
     │  └─ broadcastScoreUpdate()
     │
     ├─ db.ts
     │  ├─ Supabase Client
-    │  ├─ Court Operations
-    │  ├─ Match Operations
-    │  └─ Score State Operations
+    │  ├─ Tournament & Court Operations
+    │  └─ Court Score State Operations
     │
     └─ redis.ts
        ├─ Redis Client
@@ -222,61 +198,42 @@ server.ts (Entry Point)
 ### Entity Relationship Diagram
 
 ```
-┌──────────────┐
-│    courts    │
-│──────────────│
-│ id (PK)      │◄────┐
-│ name         │     │
-│ current_match│─────┘ (self-ref via matches)
-│ created_at   │     │
-└──────────────┘     │
-                     │
-                     │ 1:N
-                     │
-                ┌────┴──────────┐
-                │    matches    │
-                │───────────────│
-                │ id (PK)       │◄───┐
-                │ court_id (FK) │    │
-                │ team_a        │    │
-                │ team_b        │    │
-                │ sets_a        │    │ 1:1
-                │ sets_b        │    │
-                │ start_time    │    │
-                │ is_completed  │    │
-                │ created_at    │    │
-                └───────────────┘    │
-                                     │
-                        ┌────────────┴────────┐
-                        │   score_states      │
-                        │─────────────────────│
-                        │ id (PK)             │
-                        │ match_id (FK,UNIQUE)│
-                        │ set_number          │
-                        │ team_a_score        │
-                        │ team_b_score        │
-                        │ updated_at          │
-                        └─────────────────────┘
+┌──────────────────┐       ┌────────────────────┐
+│   tournaments    │       │       courts       │
+│──────────────────│       │────────────────────│
+│ id (PK)          │───1:N─│ id (PK)            │
+│ label            │       │ tournament_id (FK) │
+│ court_count      │       │ court_number       │
+│ is_active        │       │ name               │
+└──────────────────┘       └─────────┬──────────┘
+                                     │ 1:1
+                        ┌────────────┴─────────────────┐
+                        │   court_score_states         │
+                        │──────────────────────────────│
+                        │ court_id (PK,FK)             │
+                        │ set_number                   │
+                        │ left_score, right_score      │
+                        │ sets_left, sets_right        │
+                        │ updated_at                   │
+                        └──────────────────────────────┘
 ```
 
 ### Table Details
 
+**tournaments**
+- Primary key: `id` (integer)
+- `label`, `court_count`, `is_active`
+- Each tournament has many courts
+
 **courts**
 - Primary key: `id` (integer)
-- Stores 70 courts (pre-populated)
-- References current active match
+- Foreign key: `tournament_id` → tournaments(id)
+- `court_number`, `name`; one scoreboard per court
 
-**matches**
-- Primary key: `id` (serial)
-- Foreign key: `court_id` → courts(id)
-- Stores team names and sets won
-- `is_completed`: true when match ends
-
-**score_states**
-- Primary key: `id` (serial)
-- Foreign key: `match_id` → matches(id) (unique)
-- Stores current set score
-- Auto-updates `updated_at` on change
+**court_score_states**
+- Primary key: `court_id` (FK to courts, unique)
+- `set_number`, `left_score`, `right_score`, `sets_left`, `sets_right`, `updated_at`
+- One row per court; current set and points (no match or team names)
 
 ## Redis Usage
 
@@ -481,7 +438,6 @@ app.use('/api/score', limiter);
 
 3. **Business Metrics**
    - Active courts
-   - Completed matches
    - Total score updates
 
 ### Logging Strategy
@@ -501,8 +457,7 @@ const logger = winston.createLogger({
 // Log score updates
 logger.info('Score updated', {
   courtId,
-  matchId,
-  team,
+  side: 'left' | 'right',
   newScore,
   timestamp: Date.now()
 });
@@ -517,7 +472,7 @@ logger.info('Score updated', {
    - Court-specific access codes
 
 2. **Analytics Dashboard**
-   - Real-time match statistics
+   - Real-time score/game statistics
    - Historical data visualization
    - Peak usage times
 

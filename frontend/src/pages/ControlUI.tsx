@@ -1,41 +1,109 @@
 import { useState, useEffect } from 'react';
 import { API_URL } from '../config';
 import { useSocket } from '../hooks/useSocket';
-import { Court, Match } from '../types';
+import { Tournament, Court } from '../types';
 
 function ControlUI() {
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [selectedTournamentId, setSelectedTournamentId] = useState<number | null>(null);
+  const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
+  const [showTournamentSelect, setShowTournamentSelect] = useState(true);
   const [selectedCourt, setSelectedCourt] = useState<number | null>(null);
   const [courts, setCourts] = useState<Court[]>([]);
-  const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
   const [logoTaps, setLogoTaps] = useState(0);
-  const [showCourtSelect, setShowCourtSelect] = useState(true);
+  const [showCourtSelect, setShowCourtSelect] = useState(false);
   const [showPauseScreen, setShowPauseScreen] = useState(false);
-  const [upcomingMatches, setUpcomingMatches] = useState<Match[]>([]);
   const [showSetWinModal, setShowSetWinModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<'success' | 'error' | 'warning'>('success');
-  const [tournamentLabel, setTournamentLabel] = useState('Winter Formal');
+  const [tournamentLabel, setTournamentLabel] = useState('');
 
   const { scoreState, isConnected } = useSocket(selectedCourt);
 
-  // Fetch tournament label
+  // Load tournaments on mount
   useEffect(() => {
-    async function fetchTournamentLabel() {
-      try {
-        const response = await fetch(`${API_URL}/api/settings/tournamentLabel`);
-        if (response.ok) {
-          const data = await response.json();
-          setTournamentLabel(data.label || 'Winter Formal');
+    loadTournaments();
+  }, []);
+
+  // Load selected tournament details and courts when tournament changes
+  useEffect(() => {
+    if (selectedTournamentId) {
+      loadTournamentDetails(selectedTournamentId);
+      loadCourtsForTournament(selectedTournamentId);
+      // Save to localStorage
+      localStorage.setItem('controlTournamentId', String(selectedTournamentId));
+    } else {
+      // Try to load from localStorage
+      const savedTournamentId = localStorage.getItem('controlTournamentId');
+      if (savedTournamentId) {
+        const id = parseInt(savedTournamentId);
+        if (!isNaN(id)) {
+          setSelectedTournamentId(id);
         }
-      } catch (error) {
-        console.error('Error fetching tournament label:', error);
       }
     }
-    fetchTournamentLabel();
-    // Refresh every 30 seconds in case it's changed
-    const interval = setInterval(fetchTournamentLabel, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  }, [selectedTournamentId]);
+
+  // Fetch tournament label when tournament is selected
+  useEffect(() => {
+    if (selectedTournamentId) {
+      async function fetchTournamentLabel() {
+        try {
+          const response = await fetch(`${API_URL}/api/tournaments/${selectedTournamentId}/label`);
+          if (response.ok) {
+            const data = await response.json();
+            setTournamentLabel(data.label || '');
+          }
+        } catch (error) {
+          console.error('Error fetching tournament label:', error);
+        }
+      }
+      fetchTournamentLabel();
+      // Refresh every 30 seconds in case it's changed
+      const interval = setInterval(fetchTournamentLabel, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [selectedTournamentId]);
+
+  async function loadTournaments() {
+    try {
+      const response = await fetch(`${API_URL}/api/tournaments`);
+      if (response.ok) {
+        const data = await response.json();
+        setTournaments(data);
+        // Auto-select first tournament if none selected
+        if (!selectedTournamentId && data.length > 0) {
+          setSelectedTournamentId(data[0].id);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading tournaments:', error);
+    }
+  }
+
+  async function loadTournamentDetails(tournamentId: number) {
+    try {
+      const response = await fetch(`${API_URL}/api/tournaments/${tournamentId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedTournament(data);
+      }
+    } catch (error) {
+      console.error('Error loading tournament details:', error);
+    }
+  }
+
+  async function loadCourtsForTournament(tournamentId: number) {
+    try {
+      const response = await fetch(`${API_URL}/api/tournaments/${tournamentId}/courts`);
+      if (response.ok) {
+        const data = await response.json();
+        setCourts(data);
+      }
+    } catch (error) {
+      console.error('Error fetching courts:', error);
+    }
+  }
 
   // Toast notification helper
   function showToast(message: string, type: 'success' | 'error' | 'warning' = 'success') {
@@ -44,12 +112,8 @@ function ControlUI() {
     setTimeout(() => setToastMessage(null), 4000); // Auto-hide after 4 seconds
   }
 
-  // Check if current match is complete
-  // Crossover matches: 1 set to win
-  // Regular matches: 2 sets to win (best of 3)
-  const setsToWin = scoreState?.isCrossover ? 1 : 2;
-  const isMatchComplete = currentMatch?.is_completed || 
-    (scoreState && (scoreState.setsA >= setsToWin || scoreState.setsB >= setsToWin));
+  // Game over: first to 2 sets wins (best of 3)
+  const isGameComplete = scoreState && (scoreState.setsLeft >= 2 || scoreState.setsRight >= 2);
 
   // Show modal when a set is won
   useEffect(() => {
@@ -60,111 +124,63 @@ function ControlUI() {
     }
   }, [scoreState?.pendingSetWin]);
 
-  // Load court selection from localStorage
+  // Load court selection from localStorage (after tournament is selected)
   useEffect(() => {
-    const savedCourt = localStorage.getItem('courtId');
-    if (savedCourt) {
-      const courtId = parseInt(savedCourt);
-      setSelectedCourt(courtId);
-      setShowCourtSelect(false);
-      loadCurrentMatch(courtId);
-      loadUpcomingMatches(courtId);
-    }
-  }, []);
-
-  // Show pause screen when match is complete OR when there's no current match but there are upcoming matches
-  useEffect(() => {
-    if (isMatchComplete && !showPauseScreen) {
-      setShowPauseScreen(true);
-    }
-  }, [isMatchComplete]);
-
-  // Show pause screen if no current match but there are upcoming matches (for first match)
-  useEffect(() => {
-    if (!currentMatch && upcomingMatches.length > 0 && selectedCourt && !showPauseScreen) {
-      setShowPauseScreen(true);
-    }
-  }, [currentMatch, upcomingMatches, selectedCourt]);
-
-  // Fetch all courts
-  useEffect(() => {
-    fetchCourts();
-  }, []);
-
-  async function fetchCourts() {
-    try {
-      const response = await fetch(`${API_URL}/api/courts`);
-      const data = await response.json();
-      setCourts(data);
-    } catch (error) {
-      console.error('Error fetching courts:', error);
-    }
-  }
-
-  async function loadCurrentMatch(courtId: number) {
-    try {
-      const response = await fetch(`${API_URL}/api/court/${courtId}/currentMatch`);
-      if (response.ok) {
-        const match = await response.json();
-        setCurrentMatch(match);
-      }
-    } catch (error) {
-      console.error('Error loading current match:', error);
-    }
-  }
-
-  async function loadUpcomingMatches(courtId: number) {
-    try {
-      const response = await fetch(`${API_URL}/api/court/${courtId}/upcomingMatches?limit=3`);
-      if (response.ok) {
-        const matches = await response.json();
-        setUpcomingMatches(matches);
-      }
-    } catch (error) {
-      console.error('Error loading upcoming matches:', error);
-    }
-  }
-
-  async function advanceToNextMatch() {
-    if (!selectedCourt) return;
-    
-    try {
-      const response = await fetch(`${API_URL}/api/court/${selectedCourt}/advanceToNextMatch`, {
-        method: 'POST'
-      });
-      
-      if (response.ok) {
-        const nextMatch = await response.json();
-        setCurrentMatch(nextMatch);
-        setShowPauseScreen(false);
-        loadUpcomingMatches(selectedCourt);
-        
-        // Show toast notification based on Larix recording status
-        if (nextMatch.larixRecordingStarted) {
-          showToast('📹 Recording started', 'success');
-        } else if (nextMatch.larixMessage) {
-          showToast(`⚠️ Recording not started: ${nextMatch.larixMessage}`, 'warning');
+    if (selectedTournamentId && courts.length > 0) {
+      const savedCourt = localStorage.getItem('controlCourtId');
+      if (savedCourt) {
+        const courtId = parseInt(savedCourt);
+        if (courts.find(c => c.id === courtId)) {
+          setSelectedCourt(courtId);
+          setShowCourtSelect(false);
         }
-        
-        // Force reload the current match to get fresh data
-        setTimeout(() => {
-          loadCurrentMatch(selectedCourt);
-        }, 500);
       } else {
-        alert('No more matches available for this court');
+        setShowCourtSelect(true);
       }
-    } catch (error) {
-      console.error('Error advancing to next match:', error);
-      alert('Error advancing to next match');
     }
+  }, [selectedTournamentId, courts]);
+
+  // Show pause screen when game is complete
+  useEffect(() => {
+    if (isGameComplete && !showPauseScreen) {
+      setShowPauseScreen(true);
+    }
+  }, [isGameComplete]);
+
+  // Handle tournament selection
+  function handleTournamentSelect(tournamentId: number) {
+    setSelectedTournamentId(tournamentId);
+    setShowTournamentSelect(false);
+    setShowCourtSelect(true);
+    // Clear selected court when tournament changes
+    setSelectedCourt(null);
+    localStorage.removeItem('controlCourtId');
   }
 
+  // Handle court selection
   function handleCourtSelect(courtId: number) {
-    localStorage.setItem('courtId', courtId.toString());
     setSelectedCourt(courtId);
     setShowCourtSelect(false);
-    loadCurrentMatch(courtId);
-    loadUpcomingMatches(courtId);
+    localStorage.setItem('controlCourtId', String(courtId));
+  }
+
+  async function handleStartNextGame() {
+    if (!selectedCourt) return;
+    try {
+      const response = await fetch(`${API_URL}/api/score/resetGame`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courtId: selectedCourt }),
+      });
+      if (response.ok) {
+        setShowPauseScreen(false);
+      } else {
+        showToast('Failed to reset game', 'error');
+      }
+    } catch (error) {
+      console.error('Error resetting game:', error);
+      showToast('Could not reset game. Check connection.', 'error');
+    }
   }
 
   function handleLogoTap() {
@@ -172,30 +188,37 @@ function ControlUI() {
     setLogoTaps(newTaps);
     
     if (newTaps >= 5) {
-      // Reset court selection
-      localStorage.removeItem('courtId');
+      // Reset tournament and court selection
+      localStorage.removeItem('controlTournamentId');
+      localStorage.removeItem('controlCourtId');
+      setSelectedTournamentId(null);
+      setSelectedTournament(null);
       setSelectedCourt(null);
-      setCurrentMatch(null);
-      setShowCourtSelect(true);
+      setShowTournamentSelect(true);
+      setShowCourtSelect(false);
       setLogoTaps(0);
-      alert('Court selection reset!');
+      alert('Tournament and court selection reset!');
     }
     
     // Reset tap count after 2 seconds
     setTimeout(() => setLogoTaps(0), 2000);
   }
 
-  async function handleScoreChange(team: 'A' | 'B', action: 'increment' | 'decrement') {
+  async function handleScoreChange(side: 'left' | 'right', action: 'increment' | 'decrement') {
     if (!selectedCourt) return;
-
     try {
-      await fetch(`${API_URL}/api/score/${action}`, {
+      const response = await fetch(`${API_URL}/api/score/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courtId: selectedCourt, team })
+        body: JSON.stringify({ courtId: selectedCourt, side }),
       });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        showToast(data.error || 'Failed to update score', 'error');
+      }
     } catch (error) {
       console.error('Error updating score:', error);
+      showToast('Could not update score. Check connection.', 'error');
     }
   }
 
@@ -214,45 +237,15 @@ function ControlUI() {
     }
   }
 
-  async function handleSwapSides() {
-    if (!selectedCourt) return;
-    if (!confirm('Swap team sides?')) return;
-
-    try {
-      await fetch(`${API_URL}/api/score/swapSides`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courtId: selectedCourt })
-      });
-      // Reload match data
-      loadCurrentMatch(selectedCourt);
-    } catch (error) {
-      console.error('Error swapping sides:', error);
-    }
-  }
-
   async function handleConfirmSetWin() {
     if (!selectedCourt) return;
-
     try {
-      // Check if this is the final set win (match ending)
-      const isMatchEnding = scoreState && (
-        (scoreState.pendingSetWin === 'A' && scoreState.setsA + 1 >= 2) ||
-        (scoreState.pendingSetWin === 'B' && scoreState.setsB + 1 >= 2)
-      );
-
       await fetch(`${API_URL}/api/score/confirmSetWin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courtId: selectedCourt })
+        body: JSON.stringify({ courtId: selectedCourt }),
       });
-      
       setShowSetWinModal(false);
-      
-      // Show toast if match ended
-      if (isMatchEnding) {
-        showToast('🛑 Match complete - Recording stopped', 'success');
-      }
     } catch (error) {
       console.error('Error confirming set win:', error);
     }
@@ -260,13 +253,11 @@ function ControlUI() {
 
   async function handleUndoSetWin() {
     if (!selectedCourt || !scoreState?.pendingSetWin) return;
-
-    // Undo the last point by decrementing the winning team's score
     try {
       await fetch(`${API_URL}/api/score/decrement`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courtId: selectedCourt, team: scoreState.pendingSetWin })
+        body: JSON.stringify({ courtId: selectedCourt, side: scoreState.pendingSetWin }),
       });
       setShowSetWinModal(false);
     } catch (error) {
@@ -274,13 +265,64 @@ function ControlUI() {
     }
   }
 
-  if (showCourtSelect) {
+  // Tournament selection screen
+  if (showTournamentSelect) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: '#000429' }}>
         <div className="rounded-2xl shadow-2xl p-8 max-w-md w-full" style={{ backgroundColor: '#1a1a3e' }}>
           <h1 className="text-3xl font-bold text-center mb-6" style={{ color: '#DDFD51' }}>
-            Select Court
+            Select Tournament
           </h1>
+          {tournaments.length === 0 ? (
+            <div className="text-center" style={{ color: '#9a9ab8' }}>
+              <p className="mb-4">No tournaments available.</p>
+              <p className="text-sm">Please create a tournament in the Admin Panel first.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {tournaments.map((tournament) => (
+                <button
+                  key={tournament.id}
+                  onClick={() => handleTournamentSelect(tournament.id)}
+                  className="w-full font-bold py-4 px-6 rounded-lg transition-opacity hover:opacity-80 text-left"
+                  style={{ backgroundColor: '#DDFD51', color: '#000429' }}
+                >
+                  <div className="text-xl">{tournament.label}</div>
+                  <div className="text-sm opacity-75">{tournament.court_count} courts</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Court selection screen (after tournament is selected)
+  if (showCourtSelect) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: '#000429' }}>
+        <div className="rounded-2xl shadow-2xl p-8 max-w-md w-full" style={{ backgroundColor: '#1a1a3e' }}>
+          <div className="flex justify-between items-center mb-4">
+            <h1 className="text-3xl font-bold" style={{ color: '#DDFD51' }}>
+              Select Court
+            </h1>
+            <button
+              onClick={() => {
+                setShowTournamentSelect(true);
+                setShowCourtSelect(false);
+              }}
+              className="text-sm font-semibold py-2 px-4 rounded-lg transition-opacity hover:opacity-80"
+              style={{ backgroundColor: '#9a9ab8', color: '#000429' }}
+            >
+              Change Tournament
+            </button>
+          </div>
+          {selectedTournament && (
+            <p className="text-sm mb-6 text-center" style={{ color: '#9a9ab8' }}>
+              {selectedTournament.label}
+            </p>
+          )}
           <div className="grid grid-cols-4 gap-3 max-h-96 overflow-y-auto">
             {courts.map((court) => (
               <button
@@ -289,7 +331,7 @@ function ControlUI() {
                 className="font-bold py-4 px-2 rounded-lg transition-colors hover:opacity-80"
                 style={{ backgroundColor: '#DDFD51', color: '#000429' }}
               >
-                {court.id}
+                {court.court_number}
               </button>
             ))}
           </div>
@@ -298,88 +340,38 @@ function ControlUI() {
     );
   }
 
-  // Pause screen - shown when match is complete or before first match
+  // Pause screen - shown when game is complete
   if (showPauseScreen) {
-    // Filter out the current match from upcoming matches to show only truly upcoming ones
-    const futureMatches = upcomingMatches.filter(match => match.id !== currentMatch?.id);
-    const nextTwoMatches = futureMatches.slice(0, 2);
-    const isFirstMatch = !currentMatch; // No current match means this is the first one
-    
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: '#000429' }}>
         <div className="rounded-2xl shadow-2xl p-8 max-w-2xl w-full" style={{ backgroundColor: '#1a1a3e' }}>
           <h1 className="text-4xl font-bold text-center mb-4" style={{ color: '#DDFD51' }}>
-            {isFirstMatch ? 'Ready to Start! 🏐' : 'Match Complete! 🎉'}
+            Game Complete! 🎉
           </h1>
-          
-          {!isFirstMatch && scoreState && (
+
+          {scoreState && (
             <div className="text-center mb-8">
               <div className="text-2xl font-semibold mb-2" style={{ color: 'white' }}>
-                {scoreState.teamA} vs {scoreState.teamB}
+                Left vs Right
               </div>
               <div className="text-xl" style={{ color: '#9a9ab8' }}>
-                Final Score: {scoreState.setsA} - {scoreState.setsB}
+                Final: {scoreState.setsLeft} - {scoreState.setsRight} sets
               </div>
             </div>
           )}
 
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold mb-4 text-center" style={{ color: '#DDFD51' }}>
-              Next Games
-            </h2>
-            
-            {nextTwoMatches.length > 0 ? (
-              <div className="space-y-4">
-                {nextTwoMatches.map((match, index) => (
-                  <div 
-                    key={match.id}
-                    className="rounded-xl p-6"
-                    style={{ 
-                      backgroundColor: index === 0 ? '#2a2a4e' : '#1a1a3e',
-                      border: index === 0 ? '2px solid #DDFD51' : 'none'
-                    }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="text-lg font-semibold" style={{ color: 'white' }}>
-                        {match.team_a}
-                      </div>
-                      <div className="text-sm font-bold" style={{ color: '#DDFD51' }}>
-                        vs
-                      </div>
-                      <div className="text-lg font-semibold" style={{ color: 'white' }}>
-                        {match.team_b}
-                      </div>
-                    </div>
-                    {index === 0 && (
-                      <div className="text-center mt-2 text-sm" style={{ color: '#DDFD51' }}>
-                        ⬆ Next Up
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center text-lg" style={{ color: '#9a9ab8' }}>
-                No upcoming matches scheduled
-              </div>
-            )}
-          </div>
-
           <button
-            onClick={advanceToNextMatch}
-            disabled={nextTwoMatches.length === 0}
-            className="w-full font-bold py-6 px-6 rounded-xl text-2xl transition-opacity disabled:opacity-50"
+            onClick={handleStartNextGame}
+            className="w-full font-bold py-6 px-6 rounded-xl text-2xl transition-opacity hover:opacity-90"
             style={{ backgroundColor: '#DDFD51', color: '#000429' }}
           >
-            Begin Match
+            Start next game
           </button>
 
-          {/* Change Court Button */}
           <button
             onClick={() => {
-              localStorage.removeItem('courtId');
+              localStorage.removeItem('controlCourtId');
               setSelectedCourt(null);
-              setCurrentMatch(null);
               setShowCourtSelect(true);
               setShowPauseScreen(false);
             }}
@@ -390,9 +382,8 @@ function ControlUI() {
           </button>
         </div>
 
-        {/* Bottom Bar */}
         <div className="fixed bottom-0 left-0 right-0 py-4 text-center font-bold text-xl" style={{ backgroundColor: '#DDFD51', color: '#000429' }}>
-          {tournamentLabel} Court {selectedCourt}
+          {tournamentLabel} Court {courts.find(c => c.id === selectedCourt)?.court_number || selectedCourt}
         </div>
       </div>
     );
@@ -433,13 +424,13 @@ function ControlUI() {
             </h2>
             <div className="text-center mb-8">
               <div className="text-2xl font-semibold mb-2" style={{ color: 'white' }}>
-                {scoreState.pendingSetWin === 'A' ? scoreState.teamA : scoreState.teamB}
+                {scoreState.pendingSetWin === 'left' ? 'Left' : 'Right'}
               </div>
               <div className="text-xl" style={{ color: '#9a9ab8' }}>
                 wins Set {scoreState.setNumber}
               </div>
               <div className="text-4xl font-bold mt-4" style={{ color: '#DDFD51' }}>
-                {scoreState.teamAScore} - {scoreState.teamBScore}
+                {scoreState.leftScore} - {scoreState.rightScore}
               </div>
             </div>
             
@@ -474,55 +465,50 @@ function ControlUI() {
           </div>
           <div className="flex items-center gap-4">
             <div className="text-sm" style={{ color: '#DDFD51' }}>
-              Court {selectedCourt}
+              Court {courts.find(c => c.id === selectedCourt)?.court_number || selectedCourt}
             </div>
             <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
           </div>
         </div>
       </div>
 
-      {/* Match Info */}
-      {currentMatch && (
-        <div className="max-w-4xl mx-auto mb-6">
-          <div className="rounded-xl shadow-lg p-6" style={{ backgroundColor: '#1a1a3e' }}>
-            <div className="text-center">
-              <h2 className="text-xl font-semibold mb-2" style={{ color: '#DDFD51' }}>
-                Set {scoreState?.setNumber || 1}
-              </h2>
-              <div className="text-sm" style={{ color: '#9a9ab8' }}>
-                Best of 3 • First to 25 (win by 2)
-              </div>
+      {/* Set info */}
+      <div className="max-w-4xl mx-auto mb-6">
+        <div className="rounded-xl shadow-lg p-6" style={{ backgroundColor: '#1a1a3e' }}>
+          <div className="text-center">
+            <h2 className="text-xl font-semibold mb-2" style={{ color: '#DDFD51' }}>
+              Set {scoreState?.setNumber || 1}
+            </h2>
+            <div className="text-sm" style={{ color: '#9a9ab8' }}>
+              Best of 3 • First to 25 (Set 3 to 15, win by 2)
             </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Scoreboard */}
+      {/* Scoreboard - Left / Right */}
       <div className="max-w-4xl mx-auto mb-6">
         <div className="grid grid-cols-2 gap-4">
-          {/* Team A */}
           <div className="rounded-xl shadow-lg p-8" style={{ backgroundColor: '#1a1a3e' }}>
             <div className="text-center mb-4">
-              <h3 className="text-2xl font-bold mb-2" style={{ color: '#DDFD51' }}>
-                {scoreState?.teamA || currentMatch?.team_a || 'Team A'}
-              </h3>
+              <h3 className="text-2xl font-bold mb-2" style={{ color: '#DDFD51' }}>Left</h3>
               <div className="text-sm" style={{ color: '#9a9ab8' }}>
-                Sets: {scoreState?.setsA || 0}
+                Sets: {scoreState?.setsLeft ?? 0}
               </div>
             </div>
             <div className="text-8xl font-bold text-center mb-6" style={{ color: '#DDFD51' }}>
-              {scoreState?.teamAScore || 0}
+              {scoreState?.leftScore ?? 0}
             </div>
             <div className="flex gap-4">
               <button
-                onClick={() => handleScoreChange('A', 'increment')}
+                onClick={() => handleScoreChange('left', 'increment')}
                 className="flex-1 font-bold py-6 px-4 rounded-lg text-2xl transition-opacity hover:opacity-80"
                 style={{ backgroundColor: '#DDFD51', color: '#000429' }}
               >
                 +
               </button>
               <button
-                onClick={() => handleScoreChange('A', 'decrement')}
+                onClick={() => handleScoreChange('left', 'decrement')}
                 className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-6 px-4 rounded-lg text-2xl transition-colors"
               >
                 −
@@ -530,29 +516,26 @@ function ControlUI() {
             </div>
           </div>
 
-          {/* Team B */}
           <div className="rounded-xl shadow-lg p-8" style={{ backgroundColor: '#1a1a3e' }}>
             <div className="text-center mb-4">
-              <h3 className="text-2xl font-bold mb-2" style={{ color: '#DDFD51' }}>
-                {scoreState?.teamB || currentMatch?.team_b || 'Team B'}
-              </h3>
+              <h3 className="text-2xl font-bold mb-2" style={{ color: '#DDFD51' }}>Right</h3>
               <div className="text-sm" style={{ color: '#9a9ab8' }}>
-                Sets: {scoreState?.setsB || 0}
+                Sets: {scoreState?.setsRight ?? 0}
               </div>
             </div>
             <div className="text-8xl font-bold text-center mb-6" style={{ color: '#DDFD51' }}>
-              {scoreState?.teamBScore || 0}
+              {scoreState?.rightScore ?? 0}
             </div>
             <div className="flex gap-4">
               <button
-                onClick={() => handleScoreChange('B', 'increment')}
+                onClick={() => handleScoreChange('right', 'increment')}
                 className="flex-1 font-bold py-6 px-4 rounded-lg text-2xl transition-opacity hover:opacity-80"
                 style={{ backgroundColor: '#DDFD51', color: '#000429' }}
               >
                 +
               </button>
               <button
-                onClick={() => handleScoreChange('B', 'decrement')}
+                onClick={() => handleScoreChange('right', 'decrement')}
                 className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-6 px-4 rounded-lg text-2xl transition-colors"
               >
                 −
@@ -562,29 +545,19 @@ function ControlUI() {
         </div>
       </div>
 
-      {/* Action Buttons */}
       <div className="max-w-4xl mx-auto mb-6">
-        <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={handleResetSet}
-            className="bg-yellow-500 hover:bg-yellow-600 font-bold py-4 px-6 rounded-lg transition-colors"
-            style={{ color: '#000429' }}
-          >
-            Reset Set
-          </button>
-          <button
-            onClick={handleSwapSides}
-            className="font-bold py-4 px-6 rounded-lg transition-opacity hover:opacity-80"
-            style={{ backgroundColor: '#DDFD51', color: '#000429' }}
-          >
-            Swap Sides
-          </button>
-        </div>
+        <button
+          onClick={handleResetSet}
+          className="w-full bg-yellow-500 hover:bg-yellow-600 font-bold py-4 px-6 rounded-lg transition-colors"
+          style={{ color: '#000429' }}
+        >
+          Reset Set
+        </button>
       </div>
 
       {/* Bottom Bar - Tournament Label */}
       <div className="fixed bottom-0 left-0 right-0 py-4 text-center font-bold text-xl" style={{ backgroundColor: '#DDFD51', color: '#000429' }}>
-        {tournamentLabel} Court {selectedCourt}
+        {tournamentLabel} Court {courts.find(c => c.id === selectedCourt)?.court_number ?? selectedCourt}
       </div>
     </div>
   );

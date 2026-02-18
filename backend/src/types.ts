@@ -1,94 +1,63 @@
 // Database Models
+export interface Tournament {
+  id: number;
+  label: string;
+  court_count: number;
+  is_active: boolean;
+  created_at?: string;
+}
+
 export interface Court {
   id: number;
+  tournament_id: number;
+  court_number: number;
   name: string;
-  current_match_id: number | null;
-  larix_device_id?: string | null;
   created_at?: string;
 }
 
-export interface Match {
-  id: number;
+export interface CourtScoreState {
   court_id: number;
-  team_a: string;
-  team_b: string;
-  sets_a: number;
-  sets_b: number;
-  start_time: string;
-  is_completed: boolean;
-  external_match_id?: string | null;  // MatchID from spreadsheet
-  is_crossover?: boolean;  // Crossover match = 1 set only (Y/N in CSV)
-  created_at?: string;
-}
-
-export interface ScoreState {
-  id?: number;
-  match_id: number;
   set_number: number;
-  team_a_score: number;
-  team_b_score: number;
-  set_history?: string; // JSON string of SetScore[]
+  left_score: number;
+  right_score: number;
+  sets_left: number;
+  sets_right: number;
   updated_at?: string;
-}
-
-export interface MatchLog {
-  id?: number;
-  court_id: number;
-  match_id: number;
-  team_a: string;
-  team_b: string;
-  start_time: string | null;
-  end_time: string | null;
-  created_at?: string;
 }
 
 // WebSocket Payloads
 export interface SetScore {
-  teamAScore: number;
-  teamBScore: number;
+  leftScore: number;
+  rightScore: number;
 }
 
 export interface ScoreUpdatePayload {
   courtId: number;
-  matchId: number;
-  teamA: string;
-  teamB: string;
-  teamAScore: number;
-  teamBScore: number;
-  setsA: number;
-  setsB: number;
+  leftScore: number;
+  rightScore: number;
+  setsLeft: number;
+  setsRight: number;
   setNumber: number;
   setHistory: SetScore[];
   updatedAt: string;
-  pendingSetWin?: 'A' | 'B' | null;  // Track if a set win is pending confirmation
-  isCrossover?: boolean;  // Crossover match = 1 set only
+  pendingSetWin?: 'left' | 'right' | null;
 }
 
 // API Request/Response Types
 export interface IncrementRequest {
   courtId: number;
-  team: 'A' | 'B';
+  side: 'left' | 'right';
 }
 
 export interface DecrementRequest {
   courtId: number;
-  team: 'A' | 'B';
+  side: 'left' | 'right';
 }
 
 export interface ResetSetRequest {
   courtId: number;
 }
 
-export interface SwapSidesRequest {
+export interface ResetGameRequest {
   courtId: number;
 }
-
-export interface UploadScheduleRow {
-  Court: number;
-  StartTime: string;
-  TeamA: string;
-  TeamB: string;
-  MatchID?: string;
-  Crossover?: string;  // 'Y' for crossover (1 set), 'N' or empty for regular (best of 3)
-}
-
